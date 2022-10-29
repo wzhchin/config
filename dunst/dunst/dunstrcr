@@ -13,19 +13,19 @@
 [global]
     monitor = 0
     follow = mouse
-    geometry = "320x6-10+40"
+    geometry = "320x6-5+40"
     indicate_hidden = yes
     shrink = no
     notification_height = 15
     separator_height = 1
     padding = 10
     horizontal_padding = 10
-    frame_width = 1
-    frame_color="#BDBDBD"
+    frame_width = 0
+    frame_color = "#232323"
     separator_color = frame
     sort = yes
     idle_threshold = 120
-    font = Roboto 11
+    font = Noto Sans CJK SC 10
     line_height = 0
     markup = full
     format = "<span><b>%s %p</b></span>\n%b"
@@ -37,49 +37,42 @@
     stack_duplicates = true
     hide_duplicate_count = false
     show_indicators = yes
-    icon_position = left 
+    icon_position = left
     max_icon_size = 48
-    icon_path = /usr/share/icons/Papirus/64x64/apps/:/usr/share/icons/Papirus/32x32/devices/:~/.dotfiles/icons/personal/:/usr/share/icons/Papirus/32x32/status:/usr/share/icons/Papirus/32x32/actions/
+    icon_path = /usr/share/icons/Arc/status/48/:/usr/share/icons/Arc/devices/48/:/usr/share/icons/Papirus/48x48/apps/
     sticky_history = yes
-    history_length = 100
+    history_length = 50
     always_run_script = true
     startup_notification = false
     verbosity = mesg
-    corner_radius = 0
+    corner_radius = 1
     force_xinerama = false
-    mouse_left_click = context
+    mouse_left_click = do_action
     mouse_middle_click = close_all
     mouse_right_click = close_current
 
-#[all]
-#    appname = "*"
-#    script="~/.scripts/notifytail"
 
 [shortcuts]
-#    close = mod4+
-    history = mod4+Escape
-#    context = ctrl+shift+period
+    close = ctrl+space
+    history = mod4+grave
+    context = ctrl+shift+period
 
-
-[transient_history_ignore]
-    match_transient = yes
-    history_ignore = yes
 
 # IMPORTANT: colors have to be defined in quotation marks.
 # Otherwise the '#' and following  would be interpreted as a comment.
 [urgency_low]
-    background="#FFFFFF"
-    foreground="#050505"
+    background="#282828"
+    foreground="#1f1f1f"
     timeout = 7
 
 
 [urgency_normal]
-    background="#FFFFFF"
-    foreground="#050505"
+    background="#282828"
+    foreground="#1f1f1f"
     timeout = 12
 
 
 [urgency_critical]
-    background="#FFFFFF"
-    foreground="#050505"
+    background="#282828"
+    foreground="#1f1f1f"
     timeout = 0
