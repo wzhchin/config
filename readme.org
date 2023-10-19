@@ -1,5 +1,7 @@
 * My System Config
   Some previews.
+** Laptop
+   [[file:previews/laptop.jpeg]]
 ** Editor
    [[file:previews/editor.png]]
 ** Browser(Firefox)
