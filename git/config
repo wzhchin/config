@@ -50,7 +50,7 @@ pruneTags = true
 all = true
 
 [help]
-autocorrect = prompt
+# autocorrect = prompt
 
 [commit]
 verbose = true
