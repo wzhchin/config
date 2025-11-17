@@ -2,9 +2,7 @@
 
 set -eu
 
-env
-exit
-
+FILE_TYPE=""
 declare -a DSTS=()
 WRITE_FLAG=false
 
@@ -74,12 +72,19 @@ kfmt_ext_path() {
 }
 
 format_file() {
-    local ext="$(echo "$1" | awk -F'.' '{if ($0 != $NF) {print $NF}}')"
+    local ext="${1##*.}"
 
     if [ -n "$ext" ]; then
         kfmt_ext_path "$ext" "$1"
-    elif cat "$1" | head -1 | grep -e "^#!/.*sh$" >/dev/null; then
-        kfmt_ext_path "sh" "$1"
+    else
+        case "$(file "$1")" in
+        *shell\ script* | *sh\ script*)
+            kfmt_ext_path "sh" "$1"
+            ;;
+        *Python\ script*)
+            kfmt_ext_path "py" "$1"
+            ;;
+        esac
     fi
 }
 
