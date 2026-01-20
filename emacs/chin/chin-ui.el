@@ -2,7 +2,7 @@
 
 (require 'subr-x)
 
-(load-theme 'modus-operandi)
+(load-theme 'adwaita)
 
 
 ;; Set tab width
