@@ -29,12 +29,36 @@
 
 (use-package corfu
   :ensure t
-  :config
-  (setq corfu-auto t)
-  (setq corfu-quit-at-boundary t)
-
+  :custom
+  (corfu-cycle t)
+  (corfu-preview-current nil)
+  :init
   (global-corfu-mode)
-  (setq text-mode-ispell-word-completion nil))
+  (corfu-history-mode)
+  (corfu-popupinfo-mode)
+  ;; Enable auto completion, configure delay, trigger and quitting
+  (setq corfu-auto t
+        corfu-auto-delay 0.2
+        corfu-auto-trigger "." ;; Custom trigger characters
+        corfu-quit-no-match 'separator) ;; or t
+  )
+(use-package cape
+  :ensure t
+  :bind ("M-/" . cape-prefix-map) ;; Alternative key: M-<tab>, M-p, M-+
+  :init
+  (add-hook 'completion-at-point-functions #'cape-dabbrev)
+  (add-hook 'completion-at-point-functions #'cape-file)
+  (add-hook 'completion-at-point-functions #'cape-elisp-block)
+  (add-hook 'completion-at-point-functions #'cape-history)
+  )
+(use-package orderless
+  :ensure t
+  :config
+  (setq completion-category-overrides '((eglot (styles orderless))
+                                        (eglot-capf (styles orderless))))
+  )
+(advice-add 'eglot-completion-at-point :around #'cape-wrap-buster)
+
 
 (use-package affe
   :ensure t
