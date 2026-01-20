@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+yt-dlp -x --audio-format mp3 "$@"
