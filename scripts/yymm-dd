@@ -4,7 +4,9 @@ _yymm-dd() {
     local fn="$1"
     local prefix=$(date +"%y%m-%d" -d "@$(stat -c "%Y" "$fn")")
 
-    if [[ ! "$fn" =~ ${prefix}* ]]; then
+    if [[ "$fn" =~ ^[0-9]{4}-[0-9]{2}- ]] || [[ "$fn" =~ ^0- ]]; then
+	    :
+    else
         echo "-> $fn ${prefix}-${fn}"
         mv "$fn" "${prefix}-${fn}"
     fi
