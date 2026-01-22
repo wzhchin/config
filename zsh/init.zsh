@@ -105,6 +105,7 @@ function chin-chpwd-append-dir() {
     [ -n  "$HISTFILE" ] && echo "$PWD" >> "$DIR_HISTORY_FILE"
 }
 add-zsh-hook -Uz chpwd chin-chpwd-append-dir
+chin-chpwd-append-dir
 
 function osc7 {
     local LC_ALL=C
