@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+set -eu
+
+echo usage: "$0" remote-name user@remote /path/to/final-dir 
+
+REMOTE_NAME="$1"
+REMOTE="$2"
+RDIR="$3"
+
+echo Create dir
+ssh "$REMOTE" "test -e '$RDIR' && (echo '$RDIR is existed, exiting now' && exit 1) || mkdir -p '$RDIR' && cd '$RDIR' && git --bare init"
+
+echo Add Remote
+git remote add "$REMOTE_NAME" "$REMOTE:$RDIR"
