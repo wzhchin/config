@@ -94,5 +94,8 @@
 (setq column-number-mode t) ; Show column number in the mode-line
 
 (setq-default frame-title-format "%b [ %f ]")
+(use-package term-title
+  :config
+  (term-title-mode))
 
 (provide 'chin-ui)
