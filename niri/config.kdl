@@ -89,11 +89,53 @@ output "eDP-1" {
     // so to put another output directly adjacent to it on the right, set its x to 1920.
     // If the position is unset or results in an overlap, the output is instead placed
     // automatically.
-    position x=2560 y=0
+    position x=320 y=1440
+}
+
+cursor {
+    hide-when-typing
+    hide-after-inactive-ms 1000
+    shake {
+      on
+         max-multiplier 100.0
+         post-expand-delay-ms 250
+         expand-duration-ms 200
+         decay-duration-ms 300
+         shake-interval-ms 400
+         min-diagonal 100.0
+         sensitivity 2.0
+    }
+}
+
+overview {
+    zoom 0.5
+    backdrop-color "#282828"
+
+    workspace-shadow {
+        // off
+        softness 40
+        spread 10
+        offset x=0 y=10
+        color "#00000050"
+    }
+}
+
+xwayland-satellite {
+    // off
+    path "xwayland-satellite"
+}
+
+clipboard {
+    disable-primary
+}
+
+hotkey-overlay {
+    skip-at-startup
+    hide-not-bound
 }
 
 
-output "DP-1" {
+output "HDMI-A-1" {
     // Uncomment this line to disable this output.
     // off
 
@@ -110,7 +152,7 @@ output "DP-1" {
 
     // Transform allows to rotate the output counter-clockwise, valid values are:
     // normal, 90, 180, 270, flipped, flipped-90, flipped-180 and flipped-270.
-    transform "normal"
+    // transform "normal"
 
     // Position of the output in the global coordinate space.
     // This affects directional monitor actions like "focus-monitor-left", and cursor movement.
