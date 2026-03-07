@@ -38,13 +38,6 @@
   :config
   (global-evil-surround-mode 1))
 
-;; (use-package evil-org
-;;   :after (evil org)
-;;   :demand t
-;;   :config
-;;   (require 'evil-org-agenda)
-;;   (evil-org-agenda-set-keys))
-
 
 ;; Leader key
 (use-package evil-leader
