@@ -19,7 +19,7 @@ input {
 
             // For example:
             // layout "us,ru"
-            options "compose:ralt,ctrl:nocaps"
+            options "compose:ralt"
         }
         repeat-delay 500
         repeat-rate 30
@@ -36,7 +36,8 @@ input {
         // accel-speed 0.2
         // accel-profile "flat"
         scroll-method "two-finger"
-        disabled-on-external-mouse
+        // this must to be disabled with using keyd
+        // disabled-on-external-mouse
     }
 
     mouse {
@@ -93,8 +94,8 @@ output "eDP-1" {
 }
 
 cursor {
-    hide-when-typing
-    hide-after-inactive-ms 1000
+    // hide-when-typing
+    // hide-after-inactive-ms 1000
     shake {
       on
          max-multiplier 100.0
