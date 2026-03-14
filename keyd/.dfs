@@ -29,6 +29,9 @@ store() {
 restore() {
   kmap app.conf $HOME/.config/keyd/app.conf
   sudo cp -rT default.conf /etc/keyd/default.conf
+  sudo systemctl restart keyd
+  if ! groups | grep -w keyd >/dev/null; then
   sudo usermod -aG keyd $USER
   warn 'Reboot'
+  fi
 }
