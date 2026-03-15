@@ -1,15 +1,3 @@
-LWin & s::
-{
-    Run '"d:/tools/alacritty/alacritty.exe" "-e" "d:/tools/msys64/usr/bin/bash -c d:/files/private/kkv/kkv-wrapper"'
-}
-
-#SingleInstance Force
-loop {
-    WinWait "d:\tools\msys64\usr\bin\bash.exe"
-    WinActivate("d:\tools\msys64\usr\bin\bash.exe")
-    WinWaitClose
-}
-
 LWin & t:: {                          ; Alt + t
     t := WinGetTitle("A")
     ExStyle := WinGetExStyle(t)
@@ -39,3 +27,26 @@ LWin & 5:: Workspace(4)
 LWin & 6:: Workspace(5)
 LWin & 7:: Workspace(6)
 LWin & 8:: Workspace(7)
+
+; 现在物理 CapsLock 键已经变成了 F24
+; 我们不再需要 CapsLock::Return 了，因为 F24 本来就不会切换大写
+; --- 导航与移动 ---
+F24 & f::Send("{Blind}{Right}")
+F24 & b::Send("{Blind}{Left}")
+F24 & p::Send("{Blind}{Up}")
+F24 & n::Send("{Blind}{Down}")
+F24 & a::Send("{Blind}{Home}")
+F24 & e::Send("{Blind}{End}")
+; --- 删除与编辑 ---
+F24 & h::Send("{Blind}{Backspace}")
+F24 & d::Send("{Blind}{Delete}")
+F24 & k::Send("{ShiftDown}{End}{ShiftUp}{Delete}")
+F24 & u::Send("^z")
+F24 & r::Send("^y")
+; --- 剪贴板与常用 ---
+F24 & w::Send("^x")
+F24 & y::Send("^v")
+F24 & s::Send("^f")
+!w::Send("^c")
+F24 & m::Send("{Enter}")
+F24 & g::Send("{Esc}")
