@@ -12,6 +12,8 @@ alias jdk17='export JAVA_HOME=/d/Tools/jdks/jdk-17; export PATH=$JAVA_HOME/bin:$
 alias jdk21='export JAVA_HOME=/d/Tools/jdks/jdk-21; export PATH=$JAVA_HOME/bin:$PATH'
 
 export PATH=/d/tools/nodejs:$PATH
+export PATH="$HOME/.local/share/pnpm:$PATH"
 
 export PATH=/d/Tools/cmd:$PATH
-export PATH=/ucrt64/bin/:$PATH
+export PATH=$PATH:/ucrt64/bin/
+
