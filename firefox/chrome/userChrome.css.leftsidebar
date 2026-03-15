@@ -1,5 +1,3 @@
-@namespace url(http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul);
-
 :root {
     --toolbar-item-height: 40px;
     --buttonbox-left-width: 0px;
@@ -21,7 +19,7 @@
     max-width: 320px !important;
     min-width: 320px !important;
     margin-top: 150px;
-    z-index: 1 !important;
+    transition: width 0.3s ease, opacity 0.3s ease 0.2s !important;
 }
 
 #sidebar-splitter {
@@ -29,8 +27,9 @@
 }
 
 #navigator-toolbox {
-    z-index: 1 !important;
+    z-index: 2 !important;  /* 3 spills extensions onto page*/
     max-height: 0px;
+    transition: width 0.3s ease, opacity 0.3s ease 0.2s !important;
 }
 
 #TabsToolbar {
@@ -56,7 +55,7 @@
     background: #eee !important;
     width: 305px !important;
     left: 9px;
-    z-index: 999 !important;
+    transition: width 0.3s ease, opacity 0.3s ease 0.2s !important;
 }
 
 #tabbrowser-tabbox {
@@ -126,11 +125,6 @@
     top: 50px !important;
 }
 
-#urlbar[breakout][breakout-extend] {
-    width: 240% !important;
-    box-shadow: none !important;
-    transition: 0.2s all;
-}
 
 #urlbar-input {
     padding-left: 10px !important;
@@ -148,4 +142,47 @@
 
 #tracking-protection-icon-container {
     display: none;
+}
+
+#sidebar-box[hidden] {
+    display: flex !important;
+    width: 0px !important;
+    min-width: 0px !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    opacity: 0 !important;
+    transition: width 0.3s ease, padding 0.3s step-end, opacity 0.2s ease !important;
+}
+
+body:has(#sidebar-box[hidden]:not(:hover)) #navigator-toolbox {
+    width: 0px !important;
+    overflow: hidden !important;
+    pointer-events: none;
+    opacity: 0 !important;
+    transition: width 0.3s ease, opacity 0.2s ease !important;
+}
+
+body:has(#sidebar-box[hidden]:not(:hover)) toolbaritem#urlbar-container {
+    width: 0px !important;
+    max-width: 0px !important;
+    pointer-events: none;
+}
+
+body:has(#sidebar-box[hidden]) #urlbar {
+    opacity: 0 !important;
+    transition: opacity 0.2s ease !important;
+}
+
+#urlbar:is([focused][breakout-extend]) {
+    width: 600px !important;
+}
+
+#urlbar:is([breakout-extend]) #tracking-protection-icon-container,
+#tracking-protection-icon-container:has([open]) {
+    transition: opacity 0.2s ease;
+    position: relative !important;
+    left: 0px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 1;
 }
