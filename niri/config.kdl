@@ -255,6 +255,10 @@ spawn-at-startup "dunst"
 spawn-at-startup "clash"
 spawn-at-startup "/usr/lib/xdg-desktop-portal-gtk --replace"
 
+spawn-at-startup "~/files/config/scripts/waylock"
+
+spawn-at-startup "swayidle" "-w" "timeout" "601" "niri msg action power-off-monitors" "timeout" "600" "~/files/config/scripts/waylock" "before-sleep" "~/files/config/scripts/waylock"
+
 // Uncomment this line to ask the clients to omit their client-side decorations if possible.
 // If the client will specifically ask for CSD, the request will be honored.
 // Additionally, clients will be informed that they are tiled, removing some rounded corners.
