@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+
+TFILE="/tmp/temp-cmds"
+	option="$(tac "$TFILE" 2>/dev/null | awk 'arr[$0]++ == 0' | fzf -q "$1" --reverse --height 40% --print-query | sed -r 's/\r?\n?$//g')" 
+  echo $option
+	if [[ -n "$option" ]]
+	then
+    echo "$option" >> "$TFILE"
+		bash -c $option
+	fi

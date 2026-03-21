@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+swaylock -f \
+  -i $HOME/files/media/pics/wallpapers/kingdomrush.png \
+  --color f4f6fb \
+  --indicator-radius 20 \
+  --indicator-thickness 7 \
+  --indicator-x-position 50 \
+  --indicator-y-position 50 \
+  --inside-color fffff0 \
+  --ring-color 8aa4d6 \
+  --line-color 00000000 \
+  --separator-color 00000000 \
+  --key-hl-color a8dcb8 \
+  --bs-hl-color e9c9a0 \
+  --inside-clear-color fffff0aa \
+  --inside-ver-color ecf5ffbb \
+  --inside-wrong-color fdeef1bb \
+  --ring-clear-color 8aa4d699 \
+  --ring-ver-color 7cb7b799 \
+  --ring-wrong-color d89aa699 \
+  --line-clear-color 00000000 \
+  --line-ver-color 00000000 \
+  --line-wrong-color 00000000 \
+  --text-color 00000000 \
+  --text-clear-color 00000000 \
+  --text-ver-color 00000000 \
+  --text-wrong-color 00000000 \
+  --hide-keyboard-layout \
+  --disable-caps-lock-text
