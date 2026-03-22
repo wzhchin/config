@@ -32,4 +32,5 @@ restore() {
       kmap "$j" "$HOME/.config/opencode/${i##*/}/${j##*/}"
     done
   done
+  kmap "RULES.md" "$HOME/.config/opencode/AGENTS.md"
 }
