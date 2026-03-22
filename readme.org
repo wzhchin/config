@@ -34,13 +34,14 @@
    - =ripgrep=, fast text greper.
    - =fd=, fast find alternative.
    - =gdu=, disk analyzer.
-   - =htop=, process monitor.
+   - +=htop=, process monitor.+
+   - =restop=, the resources implemention in the terminal.
    - =bandwidth=, network monitor.
    - =fzf=, fast and fuzzy filter.
    - =git-filter-repo=, git repo reshape tool.
    - =dufs=, simple file server.
    - [[https://github.com/darkhz/bluetuith][bluetuith]],  A TUI bluetooth manager for Linux.
-   - [[https://github.com/aeghn/restop][restop]], key an eye on the resource, TUI version 
+   - [[https://github.com/aeghn/restop][restop]], key an eye on the resource, TUI version
 
    And I have wrote some bash scripts to make life easy, e.g, my dotfiles is orginized by =dfs=, =dfm=.
 
@@ -114,12 +115,13 @@
    - *[[https://github.com/telppa/KMCounter][kmcounters]]*: Use heatmap to show mouse and keyboard usage. ~win~
    - *autohotkey*: macro-creation and automation-oriented scripting utility for Windows. ~win~
    - *[[https://github.com/RamonUnch/AltSnap][AltSnap]]*: It allows you to move and resize windows by using the Alt key and clicking wherever on the window instead of relying on very precise clicking. This behavior is very common on Linux distributions and is not actually hard to implement on Windows. ~win~
-   - *CopyQ*: very impressive clipboard manager. ~win~ ~lin~
+   - +*CopyQ*: very impressive clipboard manager. ~win~ ~lin~+
+   - *[[https://github.com/wzhchin/Qopy][Qopy]]*: my personal fork,  The fixed clipboard manager for Windows, macOS & Linux. ~win~
    - *Lettura*: Rss reader, but I'm using my own fork. ~web~
    - *TLP*: Battery Management. ~lin~
-   - *intel-lpmd*: Battery Saver.  ~lin~
+   - +*intel-lpmd*: Battery Saver.  ~lin~+
    - *mpv*: Video player, simple but powerful. ~win~ ~lin~
-   - *[[https://github.com/nokyan/resources][resources]]*:  Keep an eye on system resources. ~lin~
+   - +*[[https://github.com/nokyan/resources][resources]]*:  Keep an eye on system resources. ~lin~+
    - *[[https://github.com/JochenBaier/fastwindowswitcher][FastWindowSwitcher]]*: A fast window switcher for Windows using the keyboard. 
 
 ** Fonts
