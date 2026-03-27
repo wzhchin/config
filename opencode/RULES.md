@@ -1,1 +1,0 @@
-- use `GIT_AUTHOR_NAME=OpenCode GIT_AUTHOR_EMAIL=noreply@opencode.ai git commit` to commit the code

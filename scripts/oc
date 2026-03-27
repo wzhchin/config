@@ -1,3 +1,5 @@
 #!/usr/bin/env bash
+export GIT_AUTHOR_NAME=OpenCode
+export GIT_AUTHOR_EMAIL=noreply@opencode.ai
 
 opencode "$@"
