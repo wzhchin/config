@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 
+HISTFILE="${XDG_CACHE_HOME:-$HOME/.cache}/hc/history"
+mkdir -p "$(dirname "$HISTFILE")"
 
-TFILE="/tmp/temp-cmds"
-	option="$(tac "$TFILE" 2>/dev/null | awk 'arr[$0]++ == 0' | fzf -q "$1" --reverse --height 40% --print-query | sed -r 's/\r?\n?$//g')" 
-  echo $option
-	if [[ -n "$option" ]]
-	then
-    echo "$option" >> "$TFILE"
-		bash -c $option
-	fi
+entries=$(awk '!seen[$0]++' "$HISTFILE" 2>/dev/null | tac)
+
+mapfile -t lines < <(echo "$entries" | fzf --reverse --height 40% --print-query -q "$*")
+
+((${#lines[@]} == 0)) && exit 0
+
+cmd="${lines[-1]}"
+
+[[ -z "$cmd" ]] && exit 0
+
+grep -vxF "$cmd" "$HISTFILE" 2>/dev/null > "${HISTFILE}.tmp"
+echo "$cmd" >> "${HISTFILE}.tmp"
+mv "${HISTFILE}.tmp" "$HISTFILE"
+
+zsh -c "$cmd"
