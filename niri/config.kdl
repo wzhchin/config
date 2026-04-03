@@ -277,20 +277,20 @@ screenshot-path "~/Pictures/Screenshots/screenshot-%Y-%m-%d-%H-%M-%S.png"
 // https://github.com/YaLTeR/niri/wiki/Configuration:-Animations
 animations {
     workspace-switch {
-        spring damping-ratio=0.75 stiffness=1000 epsilon=0.0001
+        spring damping-ratio=0.78 stiffness=900 epsilon=0.0001
     }
 
     window-open {
-        duration-ms 250
-        curve "cubic-bezier" 0.16 1.0 0.3 1.0
+        duration-ms 220
+        curve "cubic-bezier" 0.08 0.95 0.15 1.0
 
         custom-shader r"
             vec4 open_color(vec3 coords_geo, vec3 size_geo) {
                 float p = niri_clamped_progress;
 
-                float scale = mix(0.94, 1.0, p);
+                float scale = mix(0.93, 1.0, p);
 
-                float slide_px = (1.0 - p) * 32.0;
+                float slide_px = (1.0 - p) * 28.0;
                 float slide_geo = slide_px / max(size_geo.x, 1.0);
 
                 vec2 uv = coords_geo.xy;
@@ -303,7 +303,7 @@ animations {
                 vec3 coords_tex = niri_geo_to_tex * vec3(uv, 1.0);
                 vec4 color = texture2D(niri_tex, coords_tex.st);
 
-                color *= smoothstep(0.0, 0.4, p);
+                color *= smoothstep(0.0, 0.35, p);
 
                 return color;
             }
@@ -311,8 +311,8 @@ animations {
     }
 
     window-close {
-        duration-ms 180
-        curve "ease-out-quad"
+        duration-ms 170
+        curve "ease-out-cubic"
 
         custom-shader r"
             vec4 close_color(vec3 coords_geo, vec3 size_geo) {
@@ -320,7 +320,7 @@ animations {
 
                 float scale = mix(1.0, 0.97, p);
 
-                float slide_px = p * 20.0;
+                float slide_px = p * 18.0;
                 float slide_geo = slide_px / max(size_geo.x, 1.0);
 
                 vec2 uv = coords_geo.xy;
@@ -333,7 +333,7 @@ animations {
                 vec3 coords_tex = niri_geo_to_tex * vec3(uv, 1.0);
                 vec4 color = texture2D(niri_tex, coords_tex.st);
 
-                color *= 1.0 - smoothstep(0.4, 1.0, p);
+                color *= 1.0 - smoothstep(0.35, 1.0, p);
 
                 return color;
             }
@@ -341,15 +341,15 @@ animations {
     }
 
     window-resize {
-        spring damping-ratio=0.8 stiffness=800 epsilon=0.0001
+        spring damping-ratio=0.78 stiffness=900 epsilon=0.0001
     }
 
     horizontal-view-movement {
-        spring damping-ratio=0.75 stiffness=900 epsilon=0.0001
+        spring damping-ratio=0.82 stiffness=800 epsilon=0.0001
     }
 
     window-movement {
-        spring damping-ratio=0.78 stiffness=850 epsilon=0.0001
+        spring damping-ratio=0.8 stiffness=900 epsilon=0.0001
     }
 
     config-notification-open-close {
@@ -361,12 +361,12 @@ animations {
     }
 
     screenshot-ui-open {
-        duration-ms 220
-        curve "cubic-bezier" 0.16 1.0 0.3 1.0
+        duration-ms 200
+        curve "cubic-bezier" 0.05 0.9 0.1 1.0
     }
 
     overview-open-close {
-        spring damping-ratio=0.72 stiffness=600 epsilon=0.0001
+        spring damping-ratio=0.75 stiffness=700 epsilon=0.0001
     }
 
     recent-windows-close {
