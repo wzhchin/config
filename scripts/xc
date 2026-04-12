@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+die() {
+    echo -e "\033[1m\033[31m$*\033[0m" >&2
+    exit 1
+}
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") <command> <archive...>
+
+Commands:
+  l    List entries
+  x    Extract archives
+EOF
+    exit 1
+}
+
+strip_ext() {
+    local name
+    name="$(basename "$1")"
+    case "${name,,}" in
+        *.tar.gz|*.tar.bz2|*.tar.xz|*.tar.zst|*.tar.lz) name="${name%.*}" ;;&
+        *.tar.gz|*.tar.bz2|*.tar.xz|*.tar.zst|*.tar.lz|*.tar|*.tgz|*.tbz2|*.txz|*.tzst)
+            name="${name%.*}" ;;
+        *.gz|*.bz2|*.xz|*.zst|*.zip|*.jar|*.war|*.ear|*.7z|*.rar|*.exe)
+            name="${name%.*}" ;;
+    esac
+    echo "$name"
+}
+
+list_entries() {
+    local fn="$1"
+    case "${fn,,}" in
+        *.tar.gz|*.tgz)       tar -tzf "$fn" ;;
+        *.tar.bz2|*.tbz2)     tar -tjf "$fn" ;;
+        *.tar.xz|*.txz)       tar -tJf "$fn" ;;
+        *.tar.zst|*.tzst)     tar --zstd -tf "$fn" ;;
+        *.tar)                 tar -tf "$fn" ;;
+        *.zip|*.jar|*.war|*.ear) unzip -Z1 "$fn" ;;
+        *.7z)                  7z l -slt "$fn" | grep '^Path = ' | sed 's/^Path = //' | tail -n +2 ;;
+        *.rar)                 unrar l "$fn" | awk 'NR>2 && !/^-/' | awk '{print $NF}' ;;
+        *.exe)                 7z l -slt "$fn" | grep '^Path = ' | sed 's/^Path = //' | tail -n +2 ;;
+        *.gz|*.bz2|*.xz|*.zst) echo "$(strip_ext "$fn")" ;;
+        *)                     die "Unsupported format: $fn" ;;
+    esac
+}
+
+extract() {
+    local fn="$1" dest="$2"
+    case "${fn,,}" in
+        *.tar.gz|*.tgz)       tar -xzf "$fn" -C "$dest" ;;
+        *.tar.bz2|*.tbz2)     tar -xjf "$fn" -C "$dest" ;;
+        *.tar.xz|*.txz)       tar -xJf "$fn" -C "$dest" ;;
+        *.tar.zst|*.tzst)     tar --zstd -xf "$fn" -C "$dest" ;;
+        *.tar)                 tar -xf "$fn" -C "$dest" ;;
+        *.gz)                  mkdir -p "$dest" && gzip -dc "$fn" > "$dest/$(basename "${fn%.gz}")" ;;
+        *.bz2)                 mkdir -p "$dest" && bzip2 -dc "$fn" > "$dest/$(basename "${fn%.bz2}")" ;;
+        *.xz)                  mkdir -p "$dest" && xz -dc "$fn" > "$dest/$(basename "${fn%.xz}")" ;;
+        *.zst)                 mkdir -p "$dest" && zstd -dc "$fn" > "$dest/$(basename "${fn%.zst}")" ;;
+        *.zip|*.jar|*.war|*.ear) unzip -qo "$fn" -d "$dest" ;;
+        *.7z)                  7z x "$fn" -o"$dest" -y ;;
+        *.rar)                 unrar x "$fn" "$dest"/ ;;
+        *.exe)                 7z x "$fn" -o"$dest" -y ;;
+        *)                     die "Unsupported format: $fn" ;;
+    esac
+}
+
+do_extract() {
+    local fn="$1"
+    [ ! -f "$fn" ] && die "File not found: $fn"
+
+    local tmpdir
+    tmpdir="$(mktemp -d -p . ".uncom-tmp-XXXXXX")"
+    extract "$fn" "$tmpdir"
+
+    local top_entries
+    top_entries=("$tmpdir"/*)
+    if [ ${#top_entries[@]} -eq 1 ] && [ -e "${top_entries[0]}" ]; then
+        local item="${top_entries[0]}"
+        local name="$(basename "$item")"
+        if [ -e "$name" ]; then
+            rm -rf "$tmpdir"
+            die "Conflict: '$name' already exists in current directory"
+        fi
+        mv "$item" "$name"
+        rm -rf "$tmpdir"
+        echo -e "\033[32mExtracted $fn -> $name\033[0m"
+    else
+        local dest
+        dest="$(strip_ext "$fn")"
+        if [ -e "$dest" ]; then
+            rm -rf "$tmpdir"
+            die "Conflict: '$dest' already exists in current directory"
+        fi
+        mv "$tmpdir" "$dest"
+        echo -e "\033[32mExtracted $fn -> $dest/\033[0m"
+    fi
+}
+
+[ $# -lt 2 ] && usage
+
+cmd="$1"
+shift
+
+case "$cmd" in
+    l)
+        for f in "$@"; do
+            [ ! -f "$f" ] && die "File not found: $f"
+            list_entries "$f"
+        done
+        ;;
+    x)
+        for f in "$@"; do
+            do_extract "$f"
+        done
+        ;;
+    *)
+        usage
+        ;;
+esac
