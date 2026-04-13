@@ -132,6 +132,8 @@ keymap = [
   { keys = ["g", "e"], commands = ["cd /etc"] },
   { keys = ["g", "h"], commands = ["cd ~/"] },
   { keys = ["?"], commands = ["help"] },
+  { keys = ["shift+j"], commands = ["preview_cursor_move_down"] },
+{ keys = ["shift+k"], commands = ["preview_cursor_move_up"] },
 ]
 
 [task_view]

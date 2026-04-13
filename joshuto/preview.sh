@@ -32,34 +32,38 @@
 ## Image previews are independent from this script.
 ##
 
-
 # set -o noclobber -o noglob -o nounset -o pipefail
-echo "$@"
-exit 
 
 FILE_PATH=""
 export PREVIEW_COLUMNS=10
 export PREVIEW_LINES=10
 
-
 while [ "$#" -gt 0 ]; do
-    case "$1" in
-    "--path")
-        shift
-        FILE_PATH="$1"
-        ;;
-    "--preview-width")
-        shift
-        PREVIEW_COLUMNS="$1"
-        ;;
-    "--preview-height")
-        shift
-        PREVIEW_LINES="$1"
-        ;;
-    esac
-    shift
+	case "$1" in
+	"--path")
+		shift
+		FILE_PATH="$1"
+		;;
+	"--preview-width")
+		shift
+		PREVIEW_COLUMNS="$1"
+		;;
+	"--preview-height")
+		shift
+		PREVIEW_LINES="$1"
+		;;
+	esac
+	shift
 done
 
-echo "$PREVIEW_COLUMNS $PREVIEW_LINES"
+MIME_TYPE="$(file --dereference --brief --mime-type "$FILE_PATH")"
+
+case "$MIME_TYPE" in
+image/* | video/*)
+	file --dereference "$FILE_PATH"
+	exit 0
+	;;
+esac
+
 tuipv "$FILE_PATH"
 exit 0
