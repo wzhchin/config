@@ -9,8 +9,6 @@
 #
 # 目前配置中有个别功能仍然是全拼拼写，不能自动适配，所以需要手动修改一下：
 # - 英文中部分符号的派生规则：在英文方案文件 melt_eng.schema.yaml > speller > algebra 修改为对应的双拼拼写运算
-# - 部件拆字的拼写规则：在部件拆字方案 radical_pinyin.schema.yaml > speller > algebra 修改为对应的双拼拼写运算
-# 打个补丁一劳永逸，补丁写法参考 [常见问题](https://github.com/iDvel/rime-ice/issues/133) 或 others/双拼补丁示例/ 文件夹
 
 
 # 方案说明
@@ -25,7 +23,6 @@ schema:
     https://github.com/iDvel/rime-ice
   dependencies:
     - melt_eng        # 英文输入，作为次翻译器挂载到拼音方案
-    - radical_pinyin  # 部件拆字，反查及辅码
 
 
 # 开关
@@ -270,25 +267,6 @@ punctuator:
   symbols:
     __include: symbols_caps_v:/symbols         # 从 symbols_caps_v.yaml 导入配置
 
-
-# 部件拆字反查
-radical_lookup:
-  tag: radical_lookup
-  dictionary: radical_pinyin
-  enable_user_dict: false
-  prefix: "uU"  # 反查前缀（反查时前缀会消失影响打英文所以设定为两个字母，或可改成一个非字母符号），与 recognizer/patterns/radical_lookup 匹配
-  tips: "  〔拆字〕"
-  comment_format:
-    - erase/^.*$//
-# 部件拆字滤镜
-radical_reverse_lookup:
-  tags: [ radical_lookup ]
-  # dictionary 为拼音标注来源，目前是显示本方案词库的注音。
-  # 可去部件拆字方案下载更全的、带声调的、已编译好的词典： https://github.com/mirtlecn/rime-radical-pinyin#反查带声调注音
-  dictionary: rime_ice
-  # comment_format:     # 自定义 comment，例如在左右加上括号
-  #  - xform/^/(/
-  #  - xform/$/)/
 
 
 # 处理符合特定规则的输入码，如网址、反查
