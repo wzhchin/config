@@ -29,8 +29,6 @@
 (setq ring-bell-function 'ignore)
 
 ;; Toolbar Settings
-(tool-bar-mode -1)
-(scroll-bar-mode -1)
 (setq backup-directory-alist `(("." . "~/.emacs-saves")))
 
 ;; Paren Settings
