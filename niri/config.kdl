@@ -96,16 +96,6 @@ output "eDP-1" {
 cursor {
     // hide-when-typing
     // hide-after-inactive-ms 1000
-    shake {
-      on
-         max-multiplier 100.0
-         post-expand-delay-ms 250
-         expand-duration-ms 200
-         decay-duration-ms 300
-         shake-interval-ms 400
-         min-diagonal 100.0
-         sensitivity 2.0
-    }
 }
 
 overview {
