@@ -142,10 +142,15 @@ prompt_chin_precmd() {
 
     unset PROMPT_CHIN_LAST_TIME
 
-    PROMPT_CHIN_HEAD="%(?..%F{red}[%?]%f )%(1j.%F{cyan}(%j)%f .)%B%F{yellow}%n%f%b@%B%F{blue}%m%f%b %B%F{green}%~%f%b${cost_time}"
+    local -a head_prefix
+    [[ -n "$SHPOOL_SESSION_NAME" ]] && head_prefix+="%F{magenta}$SHPOOL_SESSION_NAME%f|"
+    [[ -n "$VIRTUAL_ENV_PROMPT" ]] && head_prefix+="%F{35}${VIRTUAL_ENV_PROMPT:t}%f|"
+    [ -z "$HISTFILE" ] && head_prefix+="??|"
+    local prefix="${(j::)head_prefix}"
+
+    PROMPT_CHIN_HEAD="${prefix}%(?..%F{red}[%?]%f )%(1j.%F{cyan}(%j)%f .)%B%F{yellow}%n%f%b@%B%F{blue}%m%f%b %B%F{green}%~%f%b${cost_time}"
 
     local tail_his=""
-    [ -z "$HISTFILE" ] && tail_his="?? "
     PROMPT_CHIN_TAIL="${prompt_newline}${tail_his}%F{red}%(!,%K{red}#%k,$) %b%f%k"
 
     PROMPT="${PROMPT_CHIN_HEAD}${PROMPT_CHIN_TAIL}"
