@@ -8,6 +8,9 @@
 
 # Thanks to: https://github.com/ericfreese/zsh-efgit-prompt/blob/master/prompt_efgit_setup
 
+typeset -g _PROMPT_CHIN_GIT_COMPLETED=0
+typeset -g _PROMPT_CHIN_GIT_COMPLETED_PWD=""
+
 
 ## Basic prompt parts
 prompt_chin_head() {
@@ -52,7 +55,7 @@ prompt_chin_git_status() {
     }
 
     local -a parts
-    local fd line operation stashp head tag ahead behind conflicts staged changed untracked
+    local fd line operation stashp head ahead behind conflicts staged changed untracked
 
     if [ -d "$gdir/rebase-apply" ] || [ -d "$gdir/rebase-merge" ]; then
         operation="REBASE|"
@@ -73,15 +76,12 @@ prompt_chin_git_status() {
     parts+="%F{red}${operation}${stashp}%f"
 
 
-    exec {fd}< <(git status --porcelain=v2 --branch 2>&-)
+    exec {fd}< <(GIT_OPTIONAL_LOCKS=0 git status --porcelain=v2 --branch 2>&-)
 
     while read -A -u $fd line; do
         case "$line" in
-            '# branch.head'*) # Current branch
+            '# branch.head'*)
                 head="$line[3]"
-                [[ $head == "(detached)" ]] && head="$(git rev-parse --short HEAD)"
-                tag="$(git tag --points-at HEAD --column 2>&-)"
-                [[ -n "$tag" ]] && head+=" ${tag/      /|}"
                 ;;
             '# branch.ab'*) # Divergence from upstream
                 ahead="${line[3]/#+}"
@@ -102,23 +102,27 @@ prompt_chin_git_status() {
 
     exec {fd}<&-
 
+    if [[ $head == "(detached)" ]]; then
+        head="$(git rev-parse --short HEAD 2>/dev/null)"
+    fi
+    local -a tags
+    tags=(${(f)"$(git for-each-ref --format='%(refname:short)' --points-at HEAD refs/tags/ 2>/dev/null)"})
+    (( $#tags )) && head+=" ${(j:|:)tags}"
+
     parts+="${head}"
 
     local -a upstream_divergence
 
-    [[ $ahead > 0 ]] && upstream_divergence+=" %F{90}A$ahead%f"
-    [[ $behind > 0 ]] && upstream_divergence+=" %F{90}B$behind%f"
-
-    if [[ $#upstream_divergence > 0 ]]; then
-        parts+="${(j::)upstream_divergence}"
-    fi
+    (( ahead )) && upstream_divergence+=" %F{90}A$ahead%f"
+    (( behind )) && upstream_divergence+=" %F{90}B$behind%f"
+    (( $#upstream_divergence )) && parts+="${(j::)upstream_divergence}"
 
     local -a working_info
 
-    [[ $conflicts > 0 ]] && working_info+=" %F{red}x$conflicts%f"
-    [[ $staged > 0 ]] && working_info+=" %F{green}=$staged%f"
-    [[ $changed > 0 ]] && working_info+=" %F{208}*$changed%f"
-    [[ $untracked > 0 ]] && working_info+=" %F{red}+$untracked%f"
+    (( conflicts )) && working_info+=" %F{red}x$conflicts%f"
+    (( staged )) && working_info+=" %F{green}=$staged%f"
+    (( changed )) && working_info+=" %F{208}*$changed%f"
+    (( untracked )) && working_info+=" %F{red}+$untracked%f"
     parts+="${(j::)working_info}"
 
     echo -n "g[${(j::)parts}]"
@@ -134,11 +138,21 @@ prompt_chin_git_assemble() {
 
     zle -F $1
     exec {1}<&-
+
+    _PROMPT_CHIN_GIT_COMPLETED=$SECONDS
+    _PROMPT_CHIN_GIT_COMPLETED_PWD="$PWD"
 }
 
 
 prompt_chin_extend() {
     typeset -g PROMPT_CHIN_GIT_FD
+
+    if [[ "$PWD" == "$_PROMPT_CHIN_GIT_COMPLETED_PWD" ]] && \
+       (( SECONDS - _PROMPT_CHIN_GIT_COMPLETED < 2 )) && \
+       [[ -n "$PROMPT_CHIN_GIT_STATUS" ]]; then
+        PROMPT="${PROMPT_CHIN_HEAD} ${PROMPT_CHIN_GIT_STATUS}${PROMPT_CHIN_TAIL}"
+        return
+    fi
 
     # Close previous fd
     if [[ -n $PROMPT_CHIN_GIT_FD ]] && { true <&$PROMPT_CHIN_GIT_FD } 2>/dev/null; then
