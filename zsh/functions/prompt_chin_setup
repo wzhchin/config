@@ -144,11 +144,9 @@ prompt_chin_precmd() {
 
     PROMPT_CHIN_HEAD="%(?..%F{red}[%?]%f )%(1j.%F{cyan}(%j)%f .)%B%F{yellow}%n%f%b@%B%F{blue}%m%f%b %B%F{green}%~%f%b${cost_time}"
 
-    local tail_extra=""
-    [ -n "$CONDA_PROMPT_MODIFIER" ] && tail_extra="${prompt_newline}> C${CONDA_PROMPT_MODIFIER}"
     local tail_his=""
     [ -z "$HISTFILE" ] && tail_his="?? "
-    PROMPT_CHIN_TAIL="${tail_extra}${prompt_newline}${tail_his}%F{red}%(!,%K{red}#%k,$) %b%f%k"
+    PROMPT_CHIN_TAIL="${prompt_newline}${tail_his}%F{red}%(!,%K{red}#%k,$) %b%f%k"
 
     PROMPT="${PROMPT_CHIN_HEAD}${PROMPT_CHIN_TAIL}"
 
