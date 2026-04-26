@@ -12,39 +12,6 @@ typeset -g _PROMPT_CHIN_GIT_COMPLETED=0
 typeset -g _PROMPT_CHIN_GIT_COMPLETED_PWD=""
 
 
-## Basic prompt parts
-prompt_chin_head() {
-    setopt localoptions noxtrace nowarncreateglobal
-    local pr_error pr_back pr_name pr_dir
-
-    pr_state='%(?..%F{red}[%?]%f )'  # the last function return code
-    pr_bgpg='%(1j.%F{cyan}(%j)%f .)' # background program
-    pr_host='%B%F{blue}%m%f%b'
-    pr_dir='%B%F{green}%~%f%b'
-    pr_name='%B%F{yellow}%n%f%b'
-
-
-    printf  "%s"  "${pr_state}${pr_bgpg}${pr_name}@${pr_host} ${pr_dir}"
-}
-
-prompt_chin_tail() {
-    setopt localoptions noxtrace nowarncreateglobal
-    local pr_prompt pr_post pr_al pr_his
-
-    pr_prompt='%F{red}%(!,%K{red}#%k,$) '
-    pr_post='%b%f%k'
-
-    if [ -n "$CONDA_PROMPT_MODIFIER" ]; then
-        pr_al="${prompt_newline}> C${CONDA_PROMPT_MODIFIER}"
-    fi
-    
-    if [ -z "$HISTFILE" ]; then
-       pr_his="?? "
-    fi
-
-    echo "${pr_al}${prompt_newline}${pr_his}${pr_prompt}${pr_post}"
-}
-
 ## Extended prompt part: git
 prompt_chin_git_status() {
     local gdir="$(git rev-parse --git-dir 2>&-)"
@@ -167,15 +134,21 @@ prompt_chin_extend() {
 prompt_chin_precmd() {
     typeset -g PROMPT_CHIN_HEAD PROMPT_CHIN_TAIL
 
+    local cost_time=""
     if [[ -v PROMPT_CHIN_LAST_TIME ]]; then
-      local cost_time=$(($SECONDS - $PROMPT_CHIN_LAST_TIME))
-      [[ $cost_time -gt 10 ]] && cost_time=" [%F{red}%D{%H:%M:%S}~${cost_time}s%f]" || cost_time=""
+      cost_time=$(($SECONDS - $PROMPT_CHIN_LAST_TIME))
+      (( cost_time > 10 )) && cost_time=" [%F{red}%D{%H:%M:%S}~${cost_time}s%f]" || cost_time=""
     fi
 
     unset PROMPT_CHIN_LAST_TIME
 
-    PROMPT_CHIN_HEAD="$(prompt_chin_head)${cost_time}"
-    PROMPT_CHIN_TAIL="$(prompt_chin_tail)"
+    PROMPT_CHIN_HEAD="%(?..%F{red}[%?]%f )%(1j.%F{cyan}(%j)%f .)%B%F{yellow}%n%f%b@%B%F{blue}%m%f%b %B%F{green}%~%f%b${cost_time}"
+
+    local tail_extra=""
+    [ -n "$CONDA_PROMPT_MODIFIER" ] && tail_extra="${prompt_newline}> C${CONDA_PROMPT_MODIFIER}"
+    local tail_his=""
+    [ -z "$HISTFILE" ] && tail_his="?? "
+    PROMPT_CHIN_TAIL="${tail_extra}${prompt_newline}${tail_his}%F{red}%(!,%K{red}#%k,$) %b%f%k"
 
     PROMPT="${PROMPT_CHIN_HEAD}${PROMPT_CHIN_TAIL}"
 
