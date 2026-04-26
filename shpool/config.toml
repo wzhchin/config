@@ -1,0 +1,6 @@
+prompt_prefix = ""
+motd = "dump"
+
+[[keybinding]]
+binding = "Ctrl-x d"
+action = "detach"
