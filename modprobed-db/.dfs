@@ -16,6 +16,7 @@ set -eu
 # kln: ln -sT $1 $2
 # kcp: cp -rT $1 $2
 # kmap: try to map by using kcp or kln
+# kmapp: kmap "$1" "$2/${1##*/}"
 # DFS_DIR
 ######## TDOC_END
 
@@ -26,8 +27,9 @@ store() {
 }
 
 restore() {
-	cd "$DFS_DIR"
+  local mname="$(cat /sys/class/dmi/id/product_name)"
+	cd "$DFS_DIR/$mname"
 	for i in *; do
-	kmap "$DFS_DIR/$i" "$XDG_CONFIG_HOME/$i"
-done
+	  kmap "$PWD/$i" "$XDG_CONFIG_HOME/$i"
+  done
 }
