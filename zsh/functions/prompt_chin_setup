@@ -17,7 +17,7 @@ prompt_chin_git_status() {
     local gdir="$(git rev-parse --git-dir 2>&-)"
 
     [[ -n "$gdir" ]] || {
-        echo -n $'\0'
+        print $'\0'
         return
     }
 
@@ -74,7 +74,7 @@ prompt_chin_git_status() {
     fi
     local -a tags
     tags=(${(f)"$(git for-each-ref --format='%(refname:short)' --points-at HEAD refs/tags/ 2>/dev/null)"})
-    (( $#tags )) && head+=" ${(j:|:)tags}"
+    (( $#tags )) && head+=" ${(j:,:)tags}"
 
     parts+="${head}"
 
@@ -143,9 +143,9 @@ prompt_chin_precmd() {
     unset PROMPT_CHIN_LAST_TIME
 
     local -a head_prefix
-    [[ -n "$SHPOOL_SESSION_NAME" ]] && head_prefix+="%F{magenta}$SHPOOL_SESSION_NAME%f|"
-    [[ -n "$VIRTUAL_ENV_PROMPT" ]] && head_prefix+="%F{35}${VIRTUAL_ENV_PROMPT:t}%f|"
-    [ -z "$HISTFILE" ] && head_prefix+="??|"
+    [[ -n "$SHPOOL_SESSION_NAME" ]] && head_prefix+="%F{magenta}$SHPOOL_SESSION_NAME%f,"
+    [[ -n "$VIRTUAL_ENV_PROMPT" ]] && head_prefix+="%F{35}${VIRTUAL_ENV_PROMPT:t}%f,"
+    [ -z "$HISTFILE" ] && head_prefix+="??,"
     local prefix="${(j::)head_prefix}"
 
     PROMPT_CHIN_HEAD="${prefix}%(?..%F{red}[%?]%f )%(1j.%F{cyan}(%j)%f .)%B%F{yellow}%n%f%b@%B%F{blue}%m%f%b %B%F{green}%~%f%b${cost_time}"
