@@ -1,6 +1,7 @@
 paths = [
   "/usr/share/icons/Papirus/64x64/apps",
   "/usr/share/icons/Papirus/64x64/devices",
+  "/usr/share/icons/Papirus/64x64/mimetypes",
 ]
 
 [alias]
