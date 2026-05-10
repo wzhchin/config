@@ -243,7 +243,8 @@ spawn-at-startup "wall.sh"
 spawn-at-startup "fcitx5"
 spawn-at-startup "dunst"
 spawn-at-startup "clash"
-spawn-at-startup "/usr/lib/xdg-desktop-portal-gtk --replace"
+spawn-at-startup "/usr/lib/xdg-desktop-portal-gtk" "--replace"
+spawn-at-startup "wl-paste" "--watch" "rglauncher-clip-writer"
 
 spawn-at-startup "~/files/config/scripts/waylock"
 
@@ -434,7 +435,8 @@ binds {
 
     // Suggested binds for running programs: terminal, app launcher, screen locker.
     Mod+Return { spawn "foot"; }
-    Mod+D { spawn "rglauncher"; }
+    Mod+D { spawn "rglauncher" "-t" "app,win,calc"; }
+    Mod+S { spawn "rglauncher" "-t" "clip"; }
     Super+Alt+L { spawn "swaylock"; }
 
     // You can also use a shell. Do this if you need pipes, multiple commands, etc.
