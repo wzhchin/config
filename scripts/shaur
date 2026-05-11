@@ -1,0 +1,472 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+AUR_URL="https://aur.archlinux.org"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/shaur"
+
+BOLD='\033[1m'
+RED='\033[1;31m'
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+RESET='\033[0m'
+
+die() {
+    printf "${RED}error:${RESET} %s\n" "$*" >&2
+    exit 1
+}
+msg() { printf "${GREEN}==>${RESET} ${BOLD}%s${RESET}\n" "$*" >&2; }
+msg2() { printf "  ${BOLD}->${RESET} %s\n" "$*" >&2; }
+warn() { printf "${YELLOW}warning:${RESET} %s\n" "$*" >&2; }
+debug() { printf "${YELLOW}DEBUG:${RESET} %s\n" "$*" >&2; }
+
+_set_proxy() {
+    local proxy_file="$CACHE_DIR/last_proxy"
+    local saved_proxy=""
+    [[ -f "$proxy_file" ]] && saved_proxy=$(<"$proxy_file")
+    local proxy
+    if [[ -n "$saved_proxy" ]]; then
+        read -rp "HTTP_PROXY [${saved_proxy}]: " proxy
+        proxy="${proxy:-$saved_proxy}"
+    else
+        read -rp "HTTP_PROXY: " proxy
+    fi
+    [[ -n "$proxy" ]] || return 1
+    mkdir -p "$(dirname "$proxy_file")"
+    printf '%s' "$proxy" >"$proxy_file"
+    export HTTP_PROXY="$proxy" HTTPS_PROXY="$proxy"
+    msg2 "Using HTTP_PROXY=${proxy}"
+}
+
+_retry() {
+    read -rp "Retry? [Y/n] " ans
+    [[ "${ans,,}" != "n" ]]
+}
+
+_RETRIABLE_FIXES=(
+    "p|Set Proxy|_set_proxy"
+    "r|Retry|_retry"
+)
+
+retriable() {
+    local -A allowed_keys=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -[a-zA-Z]) allowed_keys["${1#-}"]=1 ;;
+            --)
+                shift
+                break
+                ;;
+            *) die "retriable: unknown option: $1" ;;
+        esac
+        shift
+    done
+    [[ $# -gt 0 ]] || die "retriable: no command given"
+    local cmd=("$@")
+    while true; do
+        if "${cmd[@]}"; then
+            return 0
+        fi
+
+        local triple k desc func choice
+        msg "Command failed, available fixes:"
+        for triple in "${_RETRIABLE_FIXES[@]}"; do
+            IFS='|' read -r k desc func <<<"$triple"
+            if [[ -v allowed_keys["$k"] ]]; then
+                msg2 "[$k] $desc"
+            fi
+        done
+
+        read -rp "Choose fix: " choice
+        [[ -n "$choice" ]] || die "All retries exhausted: ${cmd[*]}"
+
+        func=""
+        desc=""
+        for triple in "${_RETRIABLE_FIXES[@]}"; do
+            local _k _desc _func
+            IFS='|' read -r _k _desc _func <<<"$triple"
+            if [[ "$_k" == "$choice" && -v allowed_keys["$_k"] ]]; then
+                func="$_func"
+                desc="$_desc"
+                break
+            fi
+        done
+        [[ -n "$func" ]] || { warn "Unknown fix: ${choice}"; continue; }
+
+        if ! "$func"; then
+            warn "${desc} skipped"
+            continue
+        fi
+        msg2 "Retrying after ${desc} ..."
+    done
+}
+
+LAST_RPC=""
+aur_rpc() {
+    local type=$1 params=$2
+    LAST_RPC=""
+    local cache_key="${type}?${params}"
+    local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/shaur/rpc"
+    local cache_file="${cache_dir}/$(printf '%s' "$cache_key" | md5sum | cut -d' ' -f1)"
+    msg2 "Curl $cache_key $cache_file"
+    if [[ -f "$cache_file" ]] &&
+           (($(date +%s) - $(stat -c %Y "$cache_file") < 7200)) &&
+           jq -e '.resultcount' "$cache_file" &>/dev/null; then
+        msg2 "RPC cache hit: ${type} ${params}"
+        LAST_RPC="$cache_file"
+        return
+    fi
+    mkdir -p "$cache_dir"
+    retriable -p -r -- \
+              curl -sfS "${AUR_URL}/rpc/v5/${type}?${params}" -o "$cache_file"
+    LAST_RPC="$cache_file"
+}
+
+_repo_search_raw() {
+    local query=$1
+    local installed_list=${2:-}
+    msg2 "Searching repos: ${query}"
+    local results
+    results=$(pacman -Ss "$query" 2>/dev/null || true)
+    if [[ -z "$results" ]]; then
+        return
+    fi
+    local -A installed_pkgs
+    if [[ -n "$installed_list" ]]; then
+        while IFS= read -r pkg; do
+            installed_pkgs["$pkg"]=1
+        done <<<"$installed_list"
+    else
+        while IFS= read -r pkg; do
+            installed_pkgs["$pkg"]=1
+        done < <(pacman -Qq 2>/dev/null)
+    fi
+
+    local in_block=0 name repo version desc s rest
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[a-z]+/ ]]; then
+            if ((in_block)); then
+                [[ -n "${installed_pkgs[$name]+x}" ]] && s="installed" || s="repo"
+                printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$repo" "$name" "$version" "$repo" "$desc" "$s"
+            fi
+            repo="${line%%/*}"
+            rest="${line#*/}"
+            name="${rest%% *}"
+            version="${rest#* }"
+            version="${version%% *}"
+            desc=""
+            in_block=1
+        else
+            desc+="$line "
+        fi
+    done <<<"$results"
+    if ((in_block)); then
+        [[ -n "${installed_pkgs[$name]+x}" ]] && s="installed" || s="repo"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$repo" "$name" "$version" "$repo" "$desc" "$s"
+    fi
+}
+
+_aur_search_raw() {
+    local query=$1
+    local installed_file=${2:-}
+        local -a terms=()
+    read -ra terms <<< "$query"
+    local -a term_files=()
+
+    for term in "${terms[@]}"; do
+        aur_rpc search "arg[]=${term}"
+        term_files+=("$LAST_RPC")
+    done
+
+    local merged=""
+    if [[ ${#terms[@]} -gt 1 ]]; then
+        msg2 "Joining ${#terms[@]} search results ..."
+        merged=$(mktemp /tmp/mini-aur-rpc.XXXXXX)
+        jq -rs '
+            [.[] | select(.type != "error")] as $valid |
+            ($valid | length) as $valid_count |
+            ($valid | [.[].results[].Name]) as $all |
+            ($all | group_by(.) | map(select(length == $valid_count) | .[0])) as $names |
+            $valid[0].results | map(select(.Name as $n | $names | index($n))) |
+            {resultcount: length, results: ., type: "search"}
+        ' "${term_files[@]}" > "$merged"
+    fi
+
+    local rpc_file="${merged:-$LAST_RPC}"
+    local count
+    count=$(jq -r '.resultcount // 0' "$rpc_file")
+    if ((count == 0)) && ! pacman -Ss "$query" &>/dev/null; then
+        warn "No matching results found"
+        rm -f "$merged"
+        exit 0
+    fi
+    if ((count > 0)); then
+        if [[ -n "$installed_file" ]]; then
+            jq -r --rawfile installed "$installed_file" \
+               '($installed | split("\n") | map(select(length > 0))) as $pkgs |
+                .results[]
+                | .Name as $n | "aur\t\(.Name)\t\(.Version)\t\(.NumVotes)\t\(.Description // "N/A")\t\(if ($pkgs | any(. == $n)) then "installed" else "aur" end)"' \
+                    "$rpc_file"
+        else
+            jq -r \
+               '.results[]
+                | "aur\t\(.Name)\t\(.Version)\t\(.NumVotes)\t\(.Description // "N/A")\taur"' \
+                    "$rpc_file"
+        fi
+    fi
+
+    rm -f "$merged"
+}
+
+search_and_install() {
+    local query="$*"
+    local tmpfile
+    tmpfile=$(mktemp /tmp/mini-aur-search.XXXXXX)
+    trap 'rm -f "$tmpfile"' RETURN
+
+    msg "Searching AUR + repos: ${query} ..."
+
+    msg2 "Fetching installed packages"
+    local installed_list
+    installed_list=$(pacman -Qq 2>/dev/null || true)
+    local installed_file
+    installed_file=$(mktemp /tmp/mini-aur-installed.XXXXXX)
+    printf '%s\n' "$installed_list" >"$installed_file"
+
+    {
+        _aur_search_raw "$query" "$installed_file"
+        _repo_search_raw "$query" "$installed_list"
+    } >"$tmpfile"
+    rm -f "$installed_file"
+
+        local -a terms=()
+    read -ra terms <<< "$query"
+    for term in "${terms[@]}"; do
+        grep -Fi -- "$term" "$tmpfile" > "${tmpfile}.grep" || true
+        mv "${tmpfile}.grep" "$tmpfile"
+    done
+
+    if [[ ! -s "$tmpfile" ]]; then
+        warn "No matching results found"
+        return
+    fi
+
+    if ! command -v fzf &>/dev/null; then
+        msg2 "fzf not installed, printing results directly"
+        column -t -s$'\t' -R2 <"$tmpfile"
+        return
+    fi
+
+    local selection
+    selection=$(awk -F'\t' '{
+        if ($1 == "core") key = "01"
+        else if ($1 == "extra") key = "02"
+        else if ($1 == "aur") key = "04" sprintf("%010d", 999999999 - $4)
+        else key = "03"
+        print key "\t" $0
+    }' "$tmpfile" | sort -t$'\t' -k1,1 | cut -f2- | while IFS=$'\t' read -r source name version extra desc status; do
+                    local status_color="$GREEN"
+                    [[ "$status" != "installed" ]] && status_color="$RESET"
+                    local extra_label=""
+                    [[ "$source" == "aur" ]] && extra_label="!$extra"
+                    local status_str=""
+                    [[ "$status" == "installed" ]] && status_str="  [$status_color$status$RESET]"
+                    printf '%b%b%s%b/%b%s%b %s%b%b\n    %s\0' \
+                            "$BOLD" "$YELLOW" "$source" "$RESET" "$BOLD" "$name" "$RESET" "$version" "$status_str" "$extra_label" "$desc"
+                done | fzf \
+                                        --read0 \
+                                        --ansi \
+                                        --bind "enter:become(echo {+} | sed 's|.*/||; s/ .*//')" \
+                                        --prompt="> " \
+                                        --no-multi)
+
+    if [[ -n "$selection" ]]; then
+        cmd_install "$selection"
+    fi
+}
+
+aur_info() {
+    local pkg=$1
+    aur_rpc info "arg[]=${pkg}"
+    jq -r '.results[0]
+        | "Name:    \(.Name)
+           Base:    \(.PackageBase)
+           Version: \(.Version)
+           Votes:   \(.NumVotes)
+           Desc:    \(.Description // "N/A")"' "$LAST_RPC"
+}
+
+aur_info_json() {
+    local pkg=$1
+    aur_rpc info "arg[]=${pkg}"
+    cat "$LAST_RPC"
+}
+
+aur_clone() {
+    local pkgbase=$1
+    mkdir -p "$CACHE_DIR"
+    if [[ -d "$CACHE_DIR/$pkgbase/.git" ]]; then
+        msg2 "Pulling ${pkgbase}"
+        retriable -p -r -- git -C "$CACHE_DIR/$pkgbase" pull
+    else
+        msg2 "Cloning ${pkgbase}"
+        rm -rf "$CACHE_DIR/$pkgbase"
+        retriable -p -r -- \
+                  git clone "${AUR_URL}/${pkgbase}.git" "$CACHE_DIR/$pkgbase"
+    fi
+}
+
+review_pkgbuild() {
+    local repo_dir=$1
+    if [[ -z "${EDITOR:-}" ]]; then
+        warn "\$EDITOR not set, skipping PKGBUILD review"
+        read -rp "Continue? [y/N] " ans
+        [[ "${ans,,}" == "y" ]] || die "Aborted by user"
+        return
+    fi
+    msg2 "Opening PKGBUILD with ${EDITOR}: ${repo_dir}/PKGBUILD"
+    "${EDITOR}" "$repo_dir/PKGBUILD"
+}
+
+build_and_install() {
+    local repo_dir=$1
+    (
+        cd "$repo_dir"
+        msg2 "Building package ..."
+        retriable -p -r -- makepkg -sf
+        local pkgfile
+        pkgfile=$(find . -maxdepth 1 -name '*.pkg.tar.zst' -newer PKGBUILD | head -1)
+        [[ -n "$pkgfile" ]] || die "Build failed: no .pkg.tar.zst found"
+        msg2 "Installing ${pkgfile##*/}"
+        sudo pacman -U -- "$pkgfile"
+    )
+}
+
+cmd_install() {
+    local pkg=$1
+
+    msg "Resolving ${pkg} ..."
+    aur_rpc info "arg[]=${pkg}"
+
+    local name pkgbase version desc
+    IFS=$'\t' read -r name pkgbase version desc \
+       <<<"$(jq -r '.results[0] | [.Name // empty, .PackageBase, .Version, .Description // "N/A"] | @tsv' "$LAST_RPC")"
+    [[ -n "$name" ]] || die "Package not found in AUR: ${pkg}"
+
+    printf "  ${BOLD}%s${RESET} %s — %s\n" "$name" "$version" "$desc"
+
+    msg "Downloading ${pkgbase} ..."
+    aur_clone "$pkgbase"
+
+    local repo_dir="$CACHE_DIR/$pkgbase"
+
+    msg "Reviewing PKGBUILD ..."
+    review_pkgbuild "$repo_dir"
+
+    build_and_install "$repo_dir"
+
+    msg "Done! ${name} ${version} installed"
+}
+
+cmd_sysupgrade() {
+    msg "Checking for AUR package updates ..."
+
+    msg2 "Fetching foreign packages"
+    local foreign_pkgs
+    foreign_pkgs=$(pacman -Qm 2>/dev/null || true)
+    if [[ -z "$foreign_pkgs" ]]; then
+        msg "No foreign packages installed"
+        return
+    fi
+
+    local -a pkg_names=() pkg_vers=()
+    local n v
+    while IFS= read -r pkg; do
+        read -r n v <<<"$pkg"
+        pkg_names+=("$n")
+        pkg_vers+=("$v")
+    done <<<"$foreign_pkgs"
+
+    msg "Checking ${#pkg_names[@]} AUR package(s) ..."
+
+    local batch_size=200
+    local total=${#pkg_names[@]}
+    local -A aur_versions=()
+
+    local offset i
+    for ((offset = 0; offset < total; offset += batch_size)); do
+        local -a batch=()
+        for ((i = offset; i < offset + batch_size && i < total; i++)); do
+            batch+=("${pkg_names[$i]}")
+        done
+
+        msg2 "Fetching AUR info batch $((offset / batch_size + 1))/$(( (total + batch_size - 1) / batch_size ))"
+        local rpc_params
+        rpc_params=$(printf 'arg[]=%s&' "${batch[@]}")
+        aur_rpc info "$rpc_params"
+
+        while IFS=$'\t' read -r n v; do
+            aur_versions["$n"]="$v"
+         done < <(jq -r '.results[] | [.Name, .Version] | @tsv' "$LAST_RPC")
+    done
+
+    local updates=()
+    local name
+    for ((i = 0; i < total; i++)); do
+        name="${pkg_names[$i]}"
+        msg2 "Checking ${name} ..."
+        local aur_ver="${aur_versions[$name]:-}"
+        local local_ver="${pkg_vers[$i]}"
+
+        if [[ -z "$aur_ver" ]]; then
+            msg2 "${name}: not found in AUR, skipping"
+            continue
+        fi
+
+        if [[ "$local_ver" != "$aur_ver" ]]; then
+            printf "  ${BOLD}%s${RESET} %s -> %s\n" "$name" "$local_ver" "$aur_ver"
+            updates+=("$name")
+        else
+            msg2 "${name}: up to date"
+        fi
+    done
+
+    if [[ ${#updates[@]} -eq 0 ]]; then
+        msg "All AUR packages are up to date"
+        return
+    fi
+
+    printf "\nUpdating %d package(s)\n" "${#updates[@]}"
+    read -rp "Proceed? [Y/n] " ans
+    [[ "${ans,,}" == "n" ]] && {
+        msg "Aborted"
+        return
+    }
+
+    for name in "${updates[@]}"; do
+        msg "Updating ${name} ..."
+        cmd_install "$name"
+    done
+}
+
+usage() {
+    cat <<EOF
+${BOLD}mini-aur${RESET} — minimal AUR helper
+
+${BOLD}Usage:${RESET}
+  mini-aur -S <pkg>       Install an AUR package
+  mini-aur -Ss <query>    Search AUR packages (fzf interactive selection + install)
+  mini-aur -Si <pkg>      Show package info
+  mini-aur -Syu           Upgrade all AUR packages
+  mini-aur -G <pkg>       Clone AUR repository
+EOF
+}
+
+case "${1:-}" in
+    -S) cmd_install "${2:?Missing package name, usage: mini-aur -S <package>}" ;;
+    -Si) aur_info "${2:?Missing package name, usage: mini-aur -Si <package>}" ;;
+    -Syu) cmd_sysupgrade ;;
+    -G) aur_clone "${2:?Missing package name, usage: mini-aur -G <package>}" ;;
+    -h | --help) usage ;;
+    *) search_and_install "${@}" ;;
+esac
