@@ -281,7 +281,14 @@ search_and_install() {
                                         --no-multi)
 
     if [[ -n "$selection" ]]; then
-        cmd_install "$selection"
+        local src
+        src=$(awk -F'\t' -v pkg="$selection" '$2 == pkg {print $1; exit}' "$tmpfile")
+        if [[ "$src" == "aur" ]]; then
+            cmd_install "$selection"
+        else
+            msg "Installing ${selection} from repo"
+            sudo pacman -S -- "$selection"
+        fi
     fi
 }
 
