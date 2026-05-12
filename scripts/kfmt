@@ -1,115 +1,97 @@
 #!/usr/bin/env bash
 
-set -eu
+set -euo pipefail
+
+msg()  { printf "\033[32m==> %s %s ~ \033[0m%s\n" "$(date +%H:%M:%S)" "$*" ; }
+warn() { printf "\033[33m==> %s %s ~ %s\033[0m\n" "$(date +%H:%M:%S)" "$*" ; }
+error(){ printf "\033[31m==> %s %s ~ %s\033[0m\n" "$(date +%H:%M:%S)" "$*" ; }
+die()  { error "$@"; exit 1; }
 
 declare -a DSTS=()
 WRITE_FLAG=false
 FILE_TYPE=""
 
-ff_sh() {
-    local filepath="$1"
-    if $WRITE_FLAG; then
-        shfmt -w -i 4 "$filepath"
-    else
-        shfmt -i 4 "$filepath"
-    fi
-}
+_kfmt_path_ext() {
+    local fp="$1" ext="${2:-}"
 
-ff_py() {
-    local filepath="$1"
-    if $WRITE_FLAG; then
-        ruff format --no-cache "$filepath"
-    else
-        ruff format --preview --no-cache "$filepath"
-    fi
-}
-
-ff_json() {
-    local filepath="$1"
-    if $WRITE_FLAG; then
-        yq -P -o json -i "$filepath"
-    else
-        yq -P -o json "$filepath"
-    fi
-}
-
-ff_yaml() {
-    local filepath="$1"
-    if $WRITE_FLAG; then
-        yq -P -o yaml -i "$filepath"
-    else
-        yq -P -o yaml "$filepath"
-    fi
-}
-
-ff_xml() {
-    local filepath="$1"
-    if $WRITE_FLAG; then
-        yq -P -o xml -i "$filepath"
-    else
-        yq -P -o xml "$filepath"
-    fi
-}
-
-ff_toml() {
-    local f="$1"
-    if $WRITE_FLAG; then
-        topiary format "$f"
-    else
-        cat "$f" | topiary format --language toml
-    fi
-}
-
-kfmt_path_ext() {
-    local ext="${2:-}" filepath="$1"
     case "$ext" in
-    sh) ff_sh "$filepath" ;;
-    py) ff_py "$filepath" ;;
-    json) ff_json "$filepath" ;;
-    toml) ff_toml "$filepath" ;;
-    xml) ff_xml "$filepath" ;;
+        sh)
+            $WRITE_FLAG && { shfmt -w -i 4 "$fp"; } || { shfmt -i 4 "$fp"; }
+            ;;
+        py)
+            $WRITE_FLAG && { ruff format --no-cache "$fp"; } || { ruff format --preview --no-cache "$fp"; }
+            ;;
+        json)
+            $WRITE_FLAG && { yq -P -o json -i "$fp"; } || { yq -P -o json "$fp"; }
+            ;;
+        toml)
+            $WRITE_FLAG && { topiary format "$fp"; } || { topiary format --language toml < "$fp"; }
+            ;;
+        xml)
+            $WRITE_FLAG && { yq -P -o xml -i "$fp"; } || { yq -P -o xml "$fp"; }
+            ;;
+        *)
+            warn "unsupported file type: $ext"
+            ;;
     esac
 }
 
-format_file() {
-    local ext="${1##*.}"
+_format_file() {
+    set -x
+    local mime
+    local fp="$1"
+    local ext
 
-    if [ -n "$ext" ]; then
-        kfmt_path_ext "$f" "$ext"
+    if [[ "$fp" == *.* ]]; then
+        ext="${fp##*.}" 
+        _kfmt_path_ext "$fp" "$ext" 
     else
-        mime="$(file --mime "$f")"
+        mime="$(file --mime "$fp")"
         case "$mime" in
-        *text/x-shellscript*)
-            kfmt_path_ext "$1" "sh"
-            ;;
-        *text/x-script.python*)
-            kfmt_path_ext "$1" "py"
-            ;;
+            *text/x-shellscript*)
+                _kfmt_path_ext "$fp" "sh"
+                ;;
+            *text/x-script.python*)
+                _kfmt_path_ext "$fp" "py"
+                ;;
+            *)
+                warn "cannot detect file type: $fp"
+                ;;
         esac
     fi
 }
 
-while [ $# -gt 0 ]; do
+_show_help() {
+    cat <<'EOF'
+Usage: kfmt [-i|-w] [-t TYPE] FILE...
+
+Options:
+  -i, -w     Write formatted result back to file
+  -t TYPE    Force file type (sh, py, json, toml, xml)
+  -h, --help Show this help message
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
     case "$1" in
-    '-w') WRITE_FLAG=true ;;
-    '-t')
-        shift
-        FILE_TYPE="$1"
-        ;;
-    -*)
-        echo "Unknown Option $1"
-        exit 1
-        ;;
-    *) DSTS=("${DSTS[@]}" "$1") ;;
+        -i|-w) WRITE_FLAG=true ;;
+        -t)
+            [[ -n $FILE_TYPE ]] && die "'-t' can only be used once."
+            shift
+            FILE_TYPE="$1"
+            ;;
+        -h|--help) _show_help; exit 0 ;;
+        *) DSTS=("${DSTS[@]}" "$1") ;;
     esac
     shift
 done
 
-if [ "x$FILE_TYPE" != "x" ]; then
-    kfmt_path_ext "${DSTS[0]}" "$FILE_TYPE"
-    exit
-fi
+[[ ${#DSTS[@]} -eq 0 ]] && { _show_help; exit 1; }
 
 for dst in "${DSTS[@]}"; do
-    format_file "$dst"
+    if [[ -n $FILE_TYPE ]]; then
+        _kfmt_path_ext "$dst" "$FILE_TYPE"
+    else
+        _format_file "$dst"
+    fi
 done
