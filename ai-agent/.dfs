@@ -27,10 +27,17 @@ store() {
 }
 
 restore() {
-  for i in "$DFS_DIR/"{skills,agents,commands}; do
-    for j in "$i"/*; do
-      kmap "$j" "$HOME/.config/opencode/${i##*/}/${j##*/}"
+    shopt -s nullglob
+    for i in "$DFS_DIR/"{skills,agents,commands}; do
+        for j in "$i"/*; do
+            kmap "$j" "$HOME/.config/opencode/${i##*/}/${j##*/}"
+        done
     done
-  done
-  kmap "RULES.md" "$HOME/.config/opencode/AGENTS.md"
+    kmap "RULES.md" "$HOME/.config/opencode/AGENTS.md"
+    for i in "$DFS_DIR/"{skills,agents,commands}; do
+        for j in "$i"/*; do
+            kmap "$j" "$HOME/.claude/${i##*/}/${j##*/}"
+        done
+    done
+    kmap "RULES.md" "$HOME/.config/opencode/CLAUDE.md"
 }
