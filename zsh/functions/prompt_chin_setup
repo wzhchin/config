@@ -8,10 +8,6 @@
 
 # Thanks to: https://github.com/ericfreese/zsh-efgit-prompt/blob/master/prompt_efgit_setup
 
-typeset -g _PROMPT_CHIN_GIT_COMPLETED=0
-typeset -g _PROMPT_CHIN_GIT_COMPLETED_PWD=""
-
-
 ## Extended prompt part: git
 prompt_chin_git_status() {
     local gdir="$(git rev-parse --git-dir 2>&-)"
@@ -96,30 +92,18 @@ prompt_chin_git_status() {
 }
 
 prompt_chin_git_assemble() {
-    typeset -g PROMPT_CHIN_GIT_STATUS
-
-    PROMPT_CHIN_GIT_STATUS="$(<&$1)"
-    [ -n "$PROMPT_CHIN_GIT_STATUS" ] || return
-    PROMPT="${PROMPT_CHIN_HEAD} ${PROMPT_CHIN_GIT_STATUS}${PROMPT_CHIN_TAIL}"
+    local prompt_chin_git_status="$(<&$1)"
+    [ -n "$prompt_chin_git_status" ] || return
+    PROMPT="${PROMPT_CHIN_HEAD} ${prompt_chin_git_status}${PROMPT_CHIN_TAIL}"
     zle reset-prompt
 
     zle -F $1
     exec {1}<&-
-
-    _PROMPT_CHIN_GIT_COMPLETED=$SECONDS
-    _PROMPT_CHIN_GIT_COMPLETED_PWD="$PWD"
 }
 
 
 prompt_chin_extend() {
     typeset -g PROMPT_CHIN_GIT_FD
-
-    if [[ "$PWD" == "$_PROMPT_CHIN_GIT_COMPLETED_PWD" ]] && \
-       (( SECONDS - _PROMPT_CHIN_GIT_COMPLETED < 2 )) && \
-       [[ -n "$PROMPT_CHIN_GIT_STATUS" ]]; then
-        PROMPT="${PROMPT_CHIN_HEAD} ${PROMPT_CHIN_GIT_STATUS}${PROMPT_CHIN_TAIL}"
-        return
-    fi
 
     # Close previous fd
     if [[ -n $PROMPT_CHIN_GIT_FD ]] && { true <&$PROMPT_CHIN_GIT_FD } 2>/dev/null; then
