@@ -1,0 +1,15 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CLASSES_ROOT\Directory\Background\shell\wezterm]
+@="WezTerm Here"
+"Icon"="D:\\tools\\WezTerm\\wezterm-gui.exe"
+
+[HKEY_CLASSES_ROOT\Directory\Background\shell\wezterm\command]
+@="D:\\tools\\WezTerm\\wezterm-gui.exe start --cwd \"%V\""
+
+[HKEY_CLASSES_ROOT\Directory\shell\wezterm]
+@="WezTerm Here"
+"Icon"="D:\\tools\\WezTerm\\wezterm-gui.exe"
+
+[HKEY_CLASSES_ROOT\Directory\shell\wezterm\command]
+@="D:\\tools\\WezTerm\\wezterm-gui.exe start --cwd \"%V\""
