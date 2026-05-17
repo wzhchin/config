@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+set -eu
+
+store() {
+    warn "store not implement, $PWD"
+}
+
+restore() {
+    kmap "$DFS_DIR" "$HOME/.config/nvim"
+}
