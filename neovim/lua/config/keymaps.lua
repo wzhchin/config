@@ -70,6 +70,14 @@ map("v", "<leader>cf", function()
 	vim.notify("Formatted selection with kfmt (" .. ext .. ")", vim.log.levels.INFO)
 end, { desc = "Format selection with kfmt" })
 
+map("n", "<C-h>", "<C-w>h", { desc = "Move to left window" })
+map("n", "<C-j>", "<C-w>j", { desc = "Move to below window" })
+map("n", "<C-k>", "<C-w>k", { desc = "Move to above window" })
+map("n", "<C-l>", "<C-w>l", { desc = "Move to right window" })
+
+map("n", "<leader>x", "<cmd>bdelete<cr>", { desc = "Close current buffer" })
+map("n", "<leader>s", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gI<Left><Left><Left>]], { desc = "Replace word under cursor" })
+
 map("n", "<leader>w", "<cmd>w<cr>", { desc = "Save file" })
 map("n", "<leader>q", "<cmd>q<cr>", { desc = "Quit" })
 map("n", "<ESC>", "<cmd>nohlsearch<cr>", { desc = "Clear search highlight" })

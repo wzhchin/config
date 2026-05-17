@@ -7,12 +7,12 @@ mkdir -p "$HOME"
 export HTTP_PROXY=http://127.0.0.1:7890; export HTTPS_PROXY=http://127.0.0.1:7890
 
 case "$1" in
-    f)
-        shift
-        firefox --no-remote "$@" &!
-        ;;
-    c)
-        shift
-        chromium --enable-features=UseOzonePlatform --ozone-platform=wayland "$@" &!
-        ;;
+  f)
+    shift
+    firefox --no-remote "$@" &!
+    ;;
+  c)
+    shift
+    chromium --enable-features=UseOzonePlatform --ozone-platform=wayland "$@" &!
+    ;;
 esac
