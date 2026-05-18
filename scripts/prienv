@@ -1,32 +1,171 @@
 #!/usr/bin/env bash
 
-# CHIN_PRIVATE_DIR/values/common_infos: to store private info without decryption.
-# CHIN_PRIVATE_DIR/values/passstore: use pass to read infos
+set -eu
 
-# usage: FUNC KEY
-common_infos() {
-    local key filepath
-    key="$1"
-    filepath="$CHIN_PRIVATE_DIR/values/common_infos"
-    if [ ! -f "$filepath" ]; then
-        echo "Unable to read common infos from $filepath!" >&2
-        exit 1
-    fi
-    source "$filepath"
-    value="$(eval 'echo ${'$key'}')"
-    if [ _ = "_$value" ]; then
-	    echo "KEY: $key is empty" >&2
-    fi
-    printf "%s" "$value"
+PRIENV_DIR="${CHIN_PRIVATE_DIR:-$HOME/.private}/prienv"
+PRIENV_REBOOT_CACHE="${XDG_RUNTIME_DIR:-${TEMP:-/tmp}}/prienv"
+
+_get_category() {
+    local file="$1"
+    case "$file" in
+        pub_*) echo "public" ;;
+        reb_*) echo "reboot" ;;
+        *)     echo "agent" ;;
+    esac
 }
 
-pass_infos() {
-    echo "TODO"
+_ensure_git() {
+    [ -d "$PRIENV_DIR/.git" ] || git init "$PRIENV_DIR" >&2
+}
+
+_get_cached_passphrase() {
+    local file="$1"
+    local cache_file="$PRIENV_REBOOT_CACHE/$file.pass"
+    [ -f "$cache_file" ] && cat "$cache_file" && return 0
+    return 1
+}
+
+_cache_passphrase() {
+    local file="$1"
+    local passphrase="$2"
+    mkdir -p "$PRIENV_REBOOT_CACHE"
+    chmod 700 "$PRIENV_REBOOT_CACHE"
+    printf '%s' "$passphrase" > "$PRIENV_REBOOT_CACHE/$file.pass"
+    chmod 600 "$PRIENV_REBOOT_CACHE/$file.pass"
+}
+
+_prompt_passphrase() {
+    local file="$1"
+    local passphrase
+    read -rs -p "Passphrase for $file: " passphrase < /dev/tty
+    echo "" >&2
+    printf '%s' "$passphrase"
+}
+
+_resolve_passphrase() {
+    local file="$1"
+    local category="$2"
+    case "$category" in
+        public) echo "" ;;
+        reboot)
+            local passphrase
+            if passphrase=$(_get_cached_passphrase "$file"); then
+                printf '%s' "$passphrase"
+            else
+                passphrase=$(_prompt_passphrase "$file")
+                _cache_passphrase "$file" "$passphrase"
+                printf '%s' "$passphrase"
+            fi
+            ;;
+        *) echo "" ;;
+    esac
+}
+
+_decrypt() {
+    local filepath="$1"
+    local category="$2"
+    local passphrase="${3:-}"
+    case "$category" in
+        public)
+            cat "$filepath"
+            ;;
+        reboot)
+            gpg --batch --yes --quiet --pinentry-mode loopback \
+                --passphrase-fd 3 --decrypt "$filepath" \
+                3<<<"$passphrase" 2>/dev/null
+            ;;
+        *)
+            gpg --batch --yes --quiet --decrypt "$filepath" 2>/dev/null
+            ;;
+    esac
+}
+
+_encrypt() {
+    local category="$1"
+    local passphrase="${2:-}"
+    case "$category" in
+        public)
+            cat
+            ;;
+        reboot)
+            gpg --batch --yes --quiet --pinentry-mode loopback \
+                --symmetric --cipher-algo AES256 --armor \
+                --passphrase-fd 3 3<<<"$passphrase"
+            ;;
+        *)
+            gpg --batch --yes --quiet --symmetric --cipher-algo AES256 --armor
+            ;;
+    esac
+}
+
+_usage() {
+    cat <<EOF
+Usage:
+  prienv get FILE KEY       Decrypt and print value of KEY
+  prienv edit FILE          Decrypt, open editor, re-encrypt and commit
+  prienv FILE KEY           Shorthand for get
+
+File categories (by prefix):
+  pub_*  Public    - plain text, no encryption
+  reb_*  Reboot    - encrypted, passphrase cached until reboot
+  *_     Agent     - encrypted, passphrase cached by gpg-agent (default TTL)
+EOF
     exit 1
 }
 
-if [ "_$1" = "_-p" ]; then
-    pass_infos "$2"
-else
-    common_infos "$1"
-fi
+cmd_get() {
+    local file="$1"
+    local key="$2"
+    local filepath="$PRIENV_DIR/$file"
+    local category
+    category=$(_get_category "$file")
+
+    [ -f "$filepath" ] || { echo "File not found: $filepath" >&2; exit 1; }
+
+    local passphrase
+    passphrase=$(_resolve_passphrase "$file" "$category")
+
+    local content
+    content=$(_decrypt "$filepath" "$category" "$passphrase")
+
+    eval "$content"
+    local value="${!key:-}"
+    [ -z "$value" ] && { echo "KEY: $key not found or empty" >&2; exit 1; }
+    printf "%s" "$value"
+}
+
+cmd_edit() {
+    local file="$1"
+    local filepath="$PRIENV_DIR/$file"
+    local category
+    category=$(_get_category "$file")
+    _ensure_git
+
+    local passphrase
+    passphrase=$(_resolve_passphrase "$file" "$category")
+
+    local old_content=""
+    [ -f "$filepath" ] && old_content=$(cat "$filepath")
+
+    local new_content
+    if [ -f "$filepath" ]; then
+        new_content=$(_decrypt "$filepath" "$category" "$passphrase" \
+            | vipe \
+            | _encrypt "$category" "$passphrase")
+    else
+        new_content=$(vipe | _encrypt "$category" "$passphrase")
+    fi
+
+    [ "$new_content" = "$old_content" ] && { echo "No changes." >&2; return; }
+
+    printf "%s" "$new_content" > "$filepath"
+    git -C "$PRIENV_DIR" add "$file"
+    git -C "$PRIENV_DIR" commit -m "update $file" >&2
+}
+
+case "${1:-}" in
+    get)  [ $# -eq 3 ] || _usage; cmd_get "$2" "$3" ;;
+    edit) [ $# -eq 2 ] || _usage; cmd_edit "$2" ;;
+    -h|--help) _usage ;;
+    *)    [ $# -eq 2 ] || _usage; cmd_get "$1" "$2" ;;
+esac
