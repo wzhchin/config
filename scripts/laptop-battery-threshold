@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+if lsmod | grep -q huawei_wmi; then
+  if [ $# -ne 2 ]; then
+    echo "Huawei_wmi detected, usage: $0 <start_num> <end_num>"
+    exit 1
+  fi
+  echo $1 | sudo tee /sys/class/power_supply/BATT/charge_control_start_threshold
+  echo $2 | sudo tee /sys/class/power_supply/BATT/charge_control_start_threshold
+elif lsmod | grep -i ideapad; then
+  echo 1 | sudo tee "/sys/bus/platform/drivers/ideapad_acpi/VPC2004:00/conservation_mode"
+fi
