@@ -73,10 +73,9 @@ required = true
 
 
 [alias]
+l = log --graph --pretty=format:'%C(auto)%h%Creset %C(cyan)%an%Creset %C(green)%ad%Creset %C(yellow)%d%Creset%n%s%n' --date=format:'%Y-%m-%d %H:%M:%S'
 la = log --all --graph --pretty=format:'%C(auto)%h%Creset %C(cyan)%an%Creset %C(green)%ad%Creset %C(yellow)%d%Creset%n%s%n' --date=format:'%Y-%m-%d %H:%M:%S'
 lfa = log --graph --name-only --pretty=format:'%C(auto)%h%Creset %C(cyan)%an%Creset %C(green)%ad%Creset %C(yellow)%d%Creset%n%s%n' --date=format:'%Y-%m-%d %H:%M:%S'
-
-l = log --graph --pretty=format:'%C(auto)%h%Creset %C(cyan)%an%Creset %C(green)%ad%Creset %C(yellow)%d%Creset%n%s%n' --date=format:'%Y-%m-%d %H:%M:%S'
 
 # `git log` with patches shown with difftastic.
 dl = -c diff.external=difft log -p --ext-diff
@@ -91,8 +90,11 @@ conflict = !git ls-files -u | awk '{print $4}' | sort -u
 untrack = rm -r --cached
 dupes = !git ls-tree -r HEAD | cut -c 13- | sort | uniq -D -w 40
 a = add
-b = !gitb
-bak-branch = !gitbak
+b = "!f() { branch=$(git branch -a | sort | fzf | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's|remotes/origin/||'); [[ -z \"$branch\" ]] && exit 1; git checkout \"$branch\"; }; f"
+bak-branch = "!f() { orig=$(git branch --show-current); clean=$(echo \"$orig\" | sed -e 's/[^a-zA-Z0-9_]/_/g' -re 's/_+/_/g'); t=$(date +%y%m%d_%H%M); git checkout -b \"bak_${t}_${clean}\" && git commit --allow-empty -am \"bak #${t} @${clean}\" && git checkout \"$orig\"; }; f"
+dm = difftool --tool=meld
+max-sizes = "!git rev-list --objects --all | grep \"$(git verify-pack -v $(git rev-parse --show-toplevel)/.git/objects/pack/*.idx | sort -k 3 -n | tail -10 | awk '{print$1}')\""
+grep-all = !git rev-list --all | xargs git grep
 
 rab = "!f() {   branch=$(git rev-parse --abbrev-ref HEAD);   for remote in $(git remote); do     upstream=\"refs/remotes/$remote/$branch\";     if git rev-parse --verify --quiet \"$upstream\" >/dev/null 2>&1; then       ahead=$(git rev-list --count \"$upstream..HEAD\");       behind=$(git rev-list --count \"HEAD..$upstream\");    url=$(git remote get-url \"$remote\");   echo \"$remote: A $ahead, B $behind $url\";     fi;   done; }; f"
 
