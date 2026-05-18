@@ -62,9 +62,9 @@ kln() { # TDOC: ln -sT $1 $2
     msg "ln -sT $1 $2"
     if [ -e "$2" ]; then
       if [ -L "$2" ] && [ "$(realpath "$(readlink "$2")")" = "$1" ]; then
-        msg2 "DST \`$to' is correct."
+        msg2 "DST \`$2' is correct."
       else
-        warn2 "DST \`$to' exists."
+        warn2 "DST \`$2' exists."
       fi
     else
     mkdir -p "${2%/*}"
@@ -152,7 +152,7 @@ edit_dotdfs() {
     else
         sed -z -i "s|$TDOC_BEGIN.*$TDOC_END|$TDOC_BEGIN\n$(get_tdoc|sed -z 's/\n/::newline::/g')$TDOC_END|g;s/::newline::/\n/g" "./.dfs"
     fi
-    vim "$(realpath ./.dfs)"
+    "$EDITOR" "$(realpath ./.dfs)"
 }
 
 help() {
