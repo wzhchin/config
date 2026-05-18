@@ -78,6 +78,7 @@ map("n", "<C-l>", "<C-w>l", { desc = "Move to right window" })
 map("n", "<leader>x", "<cmd>bdelete<cr>", { desc = "Close current buffer" })
 map("n", "<leader>s", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gI<Left><Left><Left>]], { desc = "Replace word under cursor" })
 
+map("n", "<leader>cgb", "<cmd>GitBlame<cr>", { desc = "Git blame line" })
 map("n", "<leader>w", "<cmd>w<cr>", { desc = "Save file" })
 map("n", "<leader>q", "<cmd>q<cr>", { desc = "Quit" })
 map("n", "<ESC>", "<cmd>nohlsearch<cr>", { desc = "Clear search highlight" })
