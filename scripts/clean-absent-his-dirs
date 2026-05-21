@@ -7,8 +7,7 @@ TMP_FILE="${1}.clean-absent"
 
 [ -f "$TMP_FILE" ] && rm "$TMP_FILE"
 
-export IFS='$'\n
-cat "$ORI_FILE" | awk 'arr[$0]++==0' > "$TMP_FILE" 
+perl -lne 'print if !$seen{$_}++ && -d $_' "$ORI_FILE" > "$TMP_FILE"
 
 mv "$ORI_FILE" "${ORI_FILE}.bak"
 mv "$TMP_FILE" "$ORI_FILE"
