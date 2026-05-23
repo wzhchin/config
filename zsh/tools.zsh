@@ -22,7 +22,9 @@ export RUSTUP_UPDATE_ROOT="https://rsproxy.cn/rustup"
 
 ## Android
 export ANDROID_HOME="$HOME/Android/Sdk" 
-[ -d "$NDK_HOME" ] && export NDK_HOME="$ANDROID_HOME/ndk/$(ls -1 $ANDROID_HOME/ndk)"
+### unset this
+unset ANDROID_SDK_ROOT 
+[ -d "$ANDROID_HOME" ] && [ -d "$ANDORID_HOME/ndk" ] && export NDK_HOME="$ANDROID_HOME/ndk/$(ls -1 $ANDROID_HOME/ndk)"
 
 
 [ -d "/opt/android-studio/jbr" ] && export IDEA_HOME=/opt/android-studio/jbr
