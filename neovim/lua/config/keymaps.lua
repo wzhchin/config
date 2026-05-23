@@ -78,7 +78,7 @@ map("n", "<C-l>", "<C-w>l", { desc = "Move to right window" })
 map("n", "<leader>x", "<cmd>bdelete<cr>", { desc = "Close current buffer" })
 map("n", "<leader>s", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gI<Left><Left><Left>]], { desc = "Replace word under cursor" })
 
-map("n", "<leader>cgb", "<cmd>GitBlameToggle<cr>", { desc = "Toggle git blame" })
+map("n", "<leader>cgb", "<cmd>BlameToggle<cr>", { desc = "Toggle git blame" })
 map("n", "<leader>cg", "<cmd>Neogit<cr>", { desc = "Open neogit" })
 map("n", "<leader>w", "<cmd>w<cr>", { desc = "Save file" })
 map("n", "<leader>q", "<cmd>q<cr>", { desc = "Quit" })
