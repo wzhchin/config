@@ -1,0 +1,11 @@
+--This file exists to facilitate llscheck CI types
+
+---@class uv_timer_t
+---@field start fun(self, time:number, repeat: number, fn: function)
+---@field stop fun(self)
+---@field is_closing fun(self): boolean
+---@field close fun(self)
+---
+---@class uv_fs_event_t
+---@field start fun(self, path: string, opts: table, callback: function)
+---@field stop fun(self)
