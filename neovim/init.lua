@@ -1,6 +1,8 @@
 require("config.options")
 require("config.keymaps")
 require("config.which-key")
+require("config.telescope")
 require("config.neogit")
 require("config.blame")
+require("config.lsp")
 require("void.git")
