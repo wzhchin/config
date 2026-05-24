@@ -10,6 +10,7 @@ wk.setup({
 wk.add({
 	{ "<leader>c", group = "code" },
 	{ "<leader>cg", group = "git" },
+	{ "<leader>f", group = "find" },
 	{
 		"<leader>?",
 		function()
