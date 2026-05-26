@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+if [[ $# -eq 0 ]]; then
+    shpool list
+    exit 0
+fi
+
+cmd="$1"
+shift
+
+case "$cmd" in
+    a)
+        if [[ -n "$SHPOOL_SESSION_NAME" ]]; then
+          echo "shpool: $SHPOOL_SESSION_NAME"
+          exit 1
+        fi
+        if [[ $# -ge 1 ]]; then
+            session="$1"
+        else
+            session="$(printf '%04d' "$RANDOM" | tail -c 4)"
+        fi
+        shpool attach "$session" -d "$PWD"
+        ;;
+    af)
+      OPTION="$(shpool list | sed '1d' | fzf | awk '{print $1}')"
+      if [[ -n "$OPTION" ]]; then
+        shpool attach "$OPTION"
+      fi
+      ;;
+    d) shpool detach "$@" ;;
+    k) shpool kill "$@" ;;
+    l) shpool list "$@" ;;
+    *) shpool "$cmd" "$@" ;;
+esac
