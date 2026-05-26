@@ -2,5 +2,5 @@ prompt_prefix = ""
 motd = "dump"
 
 [[keybinding]]
-binding = "Ctrl-x d"
+binding = "Ctrl-\\"
 action = "detach"
