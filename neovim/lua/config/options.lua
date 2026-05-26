@@ -31,3 +31,5 @@ vim.opt.inccommand = "split"
 
 vim.cmd("syntax on")
 vim.cmd("filetype plugin indent on")
+vim.opt.background = "light"
+vim.cmd("colorscheme lunaperche")
