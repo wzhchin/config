@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rtk ls *)",
+      "Bash(chmod +x *)",
+      "Bash(python3 *)"
+    ]
+  }
+}
