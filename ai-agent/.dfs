@@ -39,5 +39,6 @@ restore() {
             kmap "$j" "$HOME/.claude/${i##*/}/${j##*/}"
         done
     done
-    kmap "RULES.md" "$HOME/.config/opencode/CLAUDE.md"
+    kmap "RULES.md" "$HOME/.config/opencode/AGENTS.md"
+    kmap "RULES.md" "$HOME/.claude/CLAUDE.md"
 }
