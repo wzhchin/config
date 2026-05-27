@@ -1,4 +1,8 @@
 {
+  "attribution": {
+    "commit": "Generated with AI\n\nCo-Authored-By: Claude Code <noreply@anthropic.com>",
+    "pr": ""
+  },
   "permissions": {
     "allow": [
       "Bash(rtk git *)",
