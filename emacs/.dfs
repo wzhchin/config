@@ -19,6 +19,6 @@ store() {
 restore() {
     mkdir -p "$HOME/.emacs.d"
     for i in *; do
-        ln -sf "$DFS_DIR/$i" "$HOME/.emacs.d/$i"
+        kmap "$DFS_DIR/$i" "$HOME/.emacs.d/$i"
     done
 }
