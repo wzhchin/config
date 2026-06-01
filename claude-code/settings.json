@@ -3,7 +3,24 @@
     "allow": [
       "Bash(rtk git *)",
       "Bash(rtk ls *)",
-      "Bash(rtk read *)"
+      "Bash(rtk read *)",
+      "Bash(rtk read:*)",
+      "Bash(rtk ls:*)",
+      "Bash(rtk git:*)",
+      "Bash(command *)",
+      "Bash(rtk npx:*)",
+      "Bash(mvn *)",
+      "Bash(echo *)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)",
+      "Bash(git merge:*)",
+      "Bash(rmi:*)",
+      "Bash(git:*)",
+      "Bash(jar tf:*)",
+      "Read(//tmp/**)",
+      "Bash(jar xf:*)",
+      "Bash(javap *)",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }
