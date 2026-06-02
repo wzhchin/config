@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -f ~/.llm.log/pid ] && [ -d /proc/$(cat ~/.llm.log/pid) ] ; then
+  eval $(llm-log env)
+fi
+
 _use_deepseek() {
   export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
   export ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY"

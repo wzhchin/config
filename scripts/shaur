@@ -340,7 +340,9 @@ build_and_install() {
     (
         cd "$repo_dir"
         msg2 "Building package ..."
+        trap : INT
         retriable -p -r -- makepkg -sf
+        trap - INT
         local pkgfile
         pkgfile=$(find . -maxdepth 1 -name '*.pkg.tar.zst' -newer PKGBUILD | head -1)
         [[ -n "$pkgfile" ]] || die "Build failed: no .pkg.tar.zst found"
