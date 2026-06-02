@@ -56,6 +56,7 @@ REMOVE_FILES=(
 )
 
 for plugin in "$PLUGIN_DIR"/*/; do
+    git rm --cached "$plugin" -f
     plugin_name="$(basename "$plugin")"
     echo "==> Trimming: $plugin_name"
 
