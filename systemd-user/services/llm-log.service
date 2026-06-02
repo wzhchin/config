@@ -3,7 +3,7 @@ Description=shdev service
 After=network.target
 
 [Service]
-ExecStart=%h/.local/bin/log-llm run
+ExecStart=%h/.local/bin/llm-log run
 Restart=on-failure
 RestartSec=5
 
