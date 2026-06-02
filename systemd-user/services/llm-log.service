@@ -1,0 +1,11 @@
+[Unit]
+Description=shdev service
+After=network.target
+
+[Service]
+ExecStart=%h/.local/bin/log-llm run
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
