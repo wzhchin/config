@@ -2,3 +2,6 @@
 *.swp
 fcitx5/config/conf/cached_layouts
 fcitx5/config/profile
+
+# claude
+settings.local.json
