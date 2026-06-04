@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
+set -eu
+
 target="$(which "$1" 2>/dev/null)" || true
 [[ -z "$target" && -e "$1" ]] && target="$1"
 
 if [[ -n "$target" ]] && file "$target" | grep -qi text; then
-  vim "$target"
+  "$EDITOR" "$target"
 fi
