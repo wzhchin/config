@@ -37,7 +37,7 @@ inspath "$HOME/.local/bin"
 ## Fzf Utils
 j() {
     local folder option
-    option="$(tac "${DIR_HISTORY_FILE}" | awk 'arr[$0]++ == 0' | fzf -q "$1" --reverse --height 40% | sed -r 's/\r?\n?$//g')"
+    option="$(tac "${DIR_HISTORY_FILE}" | awk 'arr[$0]++ == 0' | grep -vxF "$PWD" | fzf -q "$1" --reverse --height 40% | sed -r 's/\r?\n?$//g')"
 
     if [[ -z "$option" ]]; then
         return 0
