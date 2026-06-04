@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+systemd-inhibit --what=handle-lid-switch --who="Lid Switch Inhibitor" --why="Keep system running as server with closed lid" --mode=block sleep infinity

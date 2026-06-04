@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+userctl - wrapper for systemctl --user
+
+Usage:
+  userctl reg <name> <command>   Register and start a user service
+  userctl <any systemctl args>   Passthrough to systemctl --user
+
+Examples:
+  userctl reg myapp 'echo hello'
+  userctl reg myapp '/usr/bin/python3 server.py'
+  userctl status myapp
+  userctl restart myapp
+EOF
+}
+
+cmd_reg() {
+    local name="$1"
+    local command="$2"
+    local unit_dir="$HOME/.config/systemd/user"
+    local unit_file="$unit_dir/${name}.service"
+
+    if [[ -z "$name" || -z "$command" ]]; then
+        echo "Error: name and command are required." >&2
+        echo "Usage: userctl reg <name> <command>" >&2
+        exit 1
+    fi
+
+    if systemctl --user is-active "$name.service" &>/dev/null; then
+        echo "Error: service '$name' is already running." >&2
+        exit 1
+    fi
+
+    mkdir -p "$unit_dir"
+
+    cat > "$unit_file" <<EOF
+[Unit]
+Description=$name
+
+[Service]
+Type=simple
+ExecStart=$command
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+
+    systemctl --user daemon-reload
+    systemctl --user enable --now "$name.service"
+
+    echo ""
+    echo "✓ Service '$name' registered and started."
+    echo "  Unit file: $unit_file"
+    echo ""
+    echo "  To modify the service, edit the file above, then:"
+    echo "    userctl daemon-reload"
+    echo "    userctl restart $name.service"
+}
+
+if [[ $# -eq 0 ]]; then
+    usage
+    exit 0
+fi
+
+case "$1" in
+    reg)
+        if [[ $# -lt 3 ]]; then
+            echo "Error: reg requires <name> and <command>." >&2
+            echo "Usage: userctl reg <name> <command>" >&2
+            exit 1
+        fi
+        cmd_reg "$2" "$3"
+        ;;
+    -h|--help|help)
+        usage
+        ;;
+    *)
+        exec systemctl --user "$@"
+        ;;
+esac
