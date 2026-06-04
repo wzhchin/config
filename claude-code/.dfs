@@ -28,4 +28,8 @@ store() {
 
 restore() {
   python "$DFS_DIR"/merge-settings.py
+  cd "$DFS_DIR/hooks"
+  for i in *; do
+    kmap "$PWD/$i" "$HOME/.claude/hooks/$i"
+  done
 }
