@@ -1,0 +1,1948 @@
+#!/bin/env bash
+
+
+# This program is free software (licenced under the GNU General Public Licence),
+# see copyright licence details at the end of file.
+
+
+# Possible improvements:
+#  * Finally update this TODO list!
+#  * pipe (|) character using its HTML character code (&#124;).
+#  * [comment]: <> (This is a comment, it will not be included in the output)
+#    [comment]: <> (file unless you use it in a reference style link.)
+#  * implement inclusion
+#  * OSC8 links with ids '\e]8;id=...;http://example.com\e\\This is a link\e]8;;\e\\\n'
+#  + manage italics on tty
+#  + when ``` is closed on the same line, closure is missed
+#  - just: could prioritize spaces around inline code
+#  - could keep bold and italics in quotes (would degrade quote perf.)
+#  - differentiate */+/- ?
+#  - could protect unused `_` and `*`
+#  - portability: make it work (in limited mode) with posix sed ?
+#    first step: allow -C --compatibility-mode
+#  - improve quote performance ?
+
+#shellcheck disable=SC2028
+
+#₀₁₂₃₄₅₆₇₈₉ₐₑₒₓₔₕₖₗₘₙₚₛₜ⁰ⁱ²³⁴⁵⁶⁷⁸⁹⁄/¾
+# ==very important words== highlight
+# :joy: 😂 https://gist.github.com/rxaviers/7360908
+
+VER_STRING="0.7.2 beta-5"
+
+# {{{1 init
+# :set foldmethod=marker
+
+LANG_ALIASES="${SMD_LANG_ALIASES:-shell:bash}"
+LANG_ALIASES=${LANG_ALIASES// /,/g}
+SMD_W="${SMD_W:-75}"
+
+if [ "$1" = "---ZZZ" ] || sed 'v' <<< "" &>/dev/null ; then
+   has_gnu_sed=1
+   Z=z
+else
+   #echo "GNU sed not detected. $(basename "$0") functionalities will be limited." >&2
+   #echo "(no quote recursive processing, no syntax highlighting)" >&2
+   #Z="s/.*//"
+   echo "This program currently requires GNU sed." >&2
+   exit 1
+fi
+
+# {{{2 help
+if [ "$1" = "-h" ] || [ "$1" = "--help" ] ; then cat << EOF
+usage (viewer)  $(basename "$1") [OPTIONS] [-2] [-t] [-R] [-k] <file.md> ..
+  By default, renders the markdown file provided and shows it using less.
+
+  If -2 or --two_col is set, use 2 columns. As it was implemented with ^[[nG,
+  horizontal scrolling with less in this mode is broken (but useless anyway),
+  don't use it (or scroll back left if you scroll right by  mistake). Just use
+  vertical scrolling; using PGUP / PGDOWN will turn a page. Also, this
+  implementation forces less -r, therefore /#<section_name> won't work.
+
+  If -t or --toc is set, only generate the table of contents. This forces -m.
+  If no argument is provided, reads stdin.
+
+  If -R or --relative, do not make the links absolute (keep them as is).
+
+  If -k or --konsole is set, use alternate conceal method.
+
+  If no argument is provided, reads stdin.
+
+usage (linter)  $(basename "$0") [OPTIONS]  [-l] [-i] [-a|-f] <file.md> ..
+  If -l or --linter is set, outputs re-formatted markdown.
+  If any of -i, -a, or -f is set, -l is implied.
+  If no argument is provided, reads stdin.
+
+  If -i or --in-place is set, the file argument is re-formatted in place.
+  If -a or --no-alt is set, no alternate section form.
+  If -f or --final is set, use a 1-space margin. (easier to read, but more
+  painful to edit)
+
+  If output is redirected, colors are automatically disabled.
+
+usage (misc)  $(basename "$0") -d|--doc|-h|--help|-v|--version
+  If -h or --help is set, displays this help and quits.
+
+  If -d or --doc is set, displays the documentation and quits.
+  You may use any option with -d, except -i. Any other input file
+  is silently ignored.
+
+  If -v or --version is set, displays the version number and exits.
+
+OPTIONS [-s] [-L|-D] [-w <width_mod>] [-j] [-p|-P] [-o <n>[!]] [-m|-N] [-n] [-r]
+  If -s or --small is set, give each section of level n the layout and
+  spacing of level n+1. The difference with "-o 1" is that such a section
+  remains declared as of level n.
+
+  If -L (resp. -D), forces light (resp. dark) theme mode. The dark mode is
+  used by default, but auto-detection works for terminal emulators that
+  understand OSC11 (_xterm_, GNOME _console_), or that set the COLORFGBG
+  environment variable (_konsole_, and _rxvt_). In order to disable the
+  OSC11 test, that always takes 0.1s, you can set COLORFGBG to 7;0 or 0;7
+  in the .bashrc.
+
+  If -w <width_mod> or --width <w_m> is set, modifies the default width by
+  <width_mod> (can be negative). Several -w <width_mod> will stack.
+
+  If -j or --no-just is set, do not justify text.
+
+  If -p or --no-par-merge is set, do not merge paragraphs.
+  If -P or --no-punct-merge is set, do not merge paragraphs
+  ending with punctuation symbols.
+
+  If -o <n> or --hierarchy-offset <n> is set, each section of level k in the
+  input is understood as a section of level k+<n> and declared as such. <n> is
+  a positive integer, and is optionally followed by '!'. In that case, section
+  titles of level 1 are ignored.
+
+  If -m or --more is set, use more instead of less. This allows to keep the
+  output on your term.
+
+  If -N or --numbers is set, display line numbers in less.
+
+  If -n or --name is set, write the name(s) of the opened file(s) to stderr.
+  This is default when multiple files are given as arguments.
+
+  If -r or --no_rec is set, disable quote processing.
+
+  If --debug is set, produces debugging output.
+
+ENVIRONMENT VARIABLES
+  This is a short reminder, see documentation for details.
+
+  LANG_ALIASES: allows to define aliases for languages names e.g.: 'shell:bash'.
+                Multiple aliases are separated by spaces or commas.
+  SMD_FLUSH_FOOT: section level at which flush footnote/references, in [0-5].
+                  0 means at the end of the document.
+                  Any other value disables footnotes/references deferring.
+  SMD_W: default maximum width.
+  SMD_SEC_MAJ/SMD_SEC_MIN/.../SMD_SSSSSEC_MIN: colors for sections, e.g. 35;1.
+EOF
+  #---ZZZ <w> is meant for recursive calls and should not be used.
+exit; fi
+
+DBG() {
+   true
+}
+
+# {{{2 arg processing
+opts=( "-n" )
+declare {lint_mode,recurse,in_place_mode,uncolored,colorless}=
+while [ -n "$*" ] && [[ "$1" == -* ]] ; do
+   case "$1" in
+      "-R" | "--relative")
+         opts+=( "$1" )
+         no_abs="-R" ;;
+      "-N" | "--numbers" )
+         opts+=( "$1" )
+         line_numbers=8 ;;
+      "-2" | "--two-col")
+         opts+=( "$1" )
+         twocol="-2" ;;
+      "-a" | "--no-alt")
+         if [ "$lint_mode" = "-f" ] ; then
+            echo '-a and -f are incompatible. -a ignored' >&2
+         else
+            opts+=( "-a" )
+            lint_mode="-a"
+         fi ;;
+      "-d" | "--doc")
+         doc=1 ;;
+      "-h" | "--help")
+         $0 -h
+         exit ;;
+      "-j" | "--no-just")
+         opts+=( "$1" )
+         no_just=1 ;;
+      "-k" | "--konsole")
+         konsole=1 ;;
+      "-U" )
+         opts+=( "$1" )
+         uncolored=$1 ;;
+      "-L" | "-D")
+         opts+=( "$1" )
+         theme="$1" ;;
+      "-p" | "--no-par-merge")
+         opts+=( "$1" )
+         no_par_merge=1 ;;
+      "-P" | "--no-punct-merge")
+         opts+=( "$1" )
+         no_par_merge=2 ;;
+      "-n" | "--name")
+         show_names=1;;
+      "-m" | "--more")
+         opts+=( "$1" )
+         use_more=1 ;;
+      "-f" | "--final")
+         if [ "$lint_mode" = "-a" ] ; then
+            echo '-f and -a are incompatible. -f ignored' >&2
+         else
+            indent=" ";
+            opts+=( "-f" )
+            lint_mode="-f"
+         fi ;;
+      "-l" | "--linter")
+         if [ -z "$lint_mode" ] ; then
+            opts+=( "-l" )
+            lint_mode="-l";
+         fi ;;
+      "-r" | "--no-rec")
+         opts+=( "-r" )
+         no_rec=1;;
+      "-o" | "--hierarchy-offset")
+         opts+=( "-o" "$2" )
+         shift
+         if [[ ! "$1" =~ [1-9][0-9]*!? ]] ; then
+            echo "error: -o <n>[!] expected, got \"$1\"" >&2
+            exit 1
+         fi
+         nhshift="${1%!}"
+         if [ "$nhshift!" = "$1" ] ; then
+            no_lev1=1;
+         fi
+         if [ -z "$hshift" ] ; then hshift=0; fi
+         hshift=$(( hshift + nhshift )) ;;
+      "-s" | "--small")
+         opts+=( "-s" )
+         small="-s";;
+      "-t" | "--toc")
+         opts+=( "-t" )
+         use_more=1
+         toc="-t" ;;
+      "-i" | "--in-place")
+         opts+=( "-i" )
+         in_place_mode=1
+         uncolored="-U"
+         if [ -z "$lint_mode" ] ; then lint_mode="-l"; fi ;;
+      "---ZZZ")
+         declare {recurse,colorless}=1
+         shift
+         SMD_W="$1"
+         if [[ ! "$SMD_W" =~ [1-9][0-9]* ]] ; then
+            echo "error: ---ZZZ <width> expected, got \"$1\"" >&2
+            exit 1
+         fi
+         shift
+         SMD_W=$(( SMD_W - ${#1} )) ;;
+      "-v" | "--version")
+         echo "$VER_STRING"
+         exit 0 ;;
+      "-w" | "--width")
+         opts+=( "-w" "$2" )
+         shift
+         if [[ ! "$1" =~ [-+]?[1-9][0-9]* ]] ; then
+            echo "error: -w <signed integer> expected, got \"$1\"" >&2
+            exit 1
+         fi
+         SMD_W=$(( SMD_W + $1 )) ;;
+      "--debug")
+         DBG() {
+            echo "$@" >&2
+         }
+         dbg="--debug" ;;
+      "--")
+         shift
+         break ;;
+      *)
+         echo "Unknown option $1. try $(basename "$0") -h." >&2
+         exit 1 ;;
+   esac; shift
+done
+
+if [ -n "$hshift" ] ; then
+   sec_pad="$(for _i in $(seq "$hshift"); do echo -n '#'; done)"
+fi
+
+if [ -n "$doc" ] ; then
+   file=$(readlink -f "$0")
+   if [ -n "$dbg" ] ; then
+      opts+=( "$dbg" )
+   fi
+   if [ -n "$in_place_mode" ]; then
+      echo "-i and -d are incompatible.\n" >&2
+      exit 1
+   elif [ -n "${opts[*]:1}" ] ; then
+      $0 "${opts[@]:1}" "${file%sh}md"
+   else
+      $0 "${file%sh}md"
+   fi
+   exit
+fi
+
+if [ -n "$lint_mode" ] && [ -n "$twocol$toc" ] ; then
+   echo "Cannot use \"$twocol$toc\" in linter mode." >&2
+   exit 1
+fi
+
+if [ $# -gt 1 ] ; then show_names=1; fi
+
+if [ -n "$in_place_mode" ] ; then
+   if [ -n "$1" ] ; then
+      tmp_file=$(mktemp)
+      trap 'rm -f "$tmp_file"' EXIT
+   else
+      echo "error: -i expects <FILE>" >&2
+      exit 1
+   fi
+elif [ -z "$recurse" ] ; then
+   if [ -t 1 ] ; then
+      screenwidth="$(tput cols)"
+      if [ -n "$line_numbers" ] && [ -z "$use_more" ] ; then
+         screenwidth=$(( screenwidth - line_numbers ))
+      fi
+      if [ -n "$twocol" ] ; then
+         screenwidth=$(( screenwidth / 2 - 1 ))
+         screenlines="$(tput lines)"
+      fi
+      if [ -z "$lint_mode" ] ; then screenwidth=$((screenwidth-1)) ; fi
+      if [ "$screenwidth" -lt "$SMD_W" ] ; then
+         SMD_W="$screenwidth"
+      fi
+      if [ -n "$use_more" ] ; then
+         #output=( less -R -X -F "--redraw-on-quit" )
+         output=( more -e -f )
+         if [ -n "$line_numbers" ] ; then
+            echo '-N and -m are incompatible, -N ignored.' >&2
+         fi
+      else
+         if [ -z "$lint_mode" ] ; then scroll=1; fi
+         if [ -n "$twocol" ] ; then
+            output=( less -r --quit-if-one-screen )
+         else
+            output=( less -R --quit-if-one-screen )
+         fi
+         if [ -n "$line_numbers" ] ; then
+            output+=( '-N' )
+         fi
+      fi
+   else
+      if [ -n "$twocol" ] ; then
+         echo "Cannot query terminal size: not a terminal stdout." >&2
+         echo " => Two-column mode disabled." >&2
+         twocol=
+      fi
+      if [ -n "$lint_mode" ] ; then
+         uncolored=-U
+      fi
+      output=( cat )
+   fi
+fi
+
+if [ "$SMD_W" -lt 10 ] ; then
+   SMD_W=10
+fi
+
+if [ -z "$recurse" ] ; then
+   hindent=" "
+   if [ -z "$lint_mode" ] ; then
+      indent="  "
+   fi
+   bonus_sp=" "
+fi
+
+
+BA="\\\\"
+ST='\*'
+E=$'\e'
+T="$E\[m"
+highlight=
+escape='s/\\/\\\\/g;'" s/'/'\"'\"'/g"
+OB="${E}a"
+CB="${E}b"
+OP="${E}c"
+CP="${E}d"
+OA="${E}e"
+CA="${E}f"
+
+if [ "$TERM" = "linux" ] || [ "$TERM" = "ansi" ] ; then
+   base_term=1
+fi
+
+DBG "opts=" "$@"
+DBG "screenwidth= $SMD_W"
+DBG "output=" "${output[@]}"
+DBG "screenlines= $screenlines"
+
+# {{{2 configure
+if [ -z "$uncolored" ] ; then
+   if [ -z "$theme" ] ; then
+      if [ -n "$base_term" ] ; then
+         theme="-D"
+      elif [ -n "$COLORFGBG" ] ; then
+         if [ "${COLORFGBG%;*}" = 0 ] ; then
+            theme="-L"
+         else
+            theme="-D"
+         fi
+      elif [[ "$TERM" =~ xterm* ]] && [ -t 1 ] && [ -t 0 ] ; then
+         oldstty="$(stty -g)"
+         stty raw -echo min 0 time 1
+         if [[ "$TERM" = xterm-kitty ]] && [ -t 1 ] ; then
+            bgq="]21;background=?"
+         else
+            bgq="]11;?"
+         fi
+         DBG -E "bg query= \"$(sed 'l;d' <<< "$E$bgq$E\\")\""
+         echo -ne "\e$bgq\e\\"
+         sleep 0.001
+         read -r res
+         echo -ne "\r"
+         green=${res#*/}; green=${green%/*}
+         stty "$oldstty"
+         if [ "$TERM" = "xterm-kitty" ] ; then
+            if [ ${#green} = 2 ] && [[ "$green" =~ ^[89A-Fa-f] ]] ; then
+               theme="-L"
+            else
+               theme="-D"
+            fi
+            IFS='/' read -ra cols <<< "$res" ; unset IFS
+            red="${cols[0]: -2}"
+            red="${red#:}"
+            blue="${cols[2]::2}"
+            blue="${blue%"$E"}"
+            BGC="8;2;$((0x$red));$((0x$green));$((0x${blue}))"
+         else
+            if [ ${#green} = 4 ] && [[ "$green" =~ ^[89A-Fa-f] ]] ; then
+               theme="-L"
+            else
+               theme="-D"
+            fi
+         fi
+         DBG -E "query answer= \"$(sed 'l;d' <<< "$res")\""
+      elif [[ "$TERM" =~ xterm* ]] ; then
+         echo "Cannot query terminal color: not a terminal stdin/stdout." >&2
+         echo " => Assuming dark theme with black background." >&2
+         theme="-D"
+      fi
+      opts+=( "$theme" )
+   fi
+   BOLD="$E\[1m"; UBOLD="$E\[22m"
+   IT="$E\[3m" ; UIT="$E\[23m"
+   SO="$E\[9m" ; USO="$E\[29m"
+   if [ "$theme" = "-L" ] ; then
+      QUOTED="$E\[37;22;2m"
+      GRAY="$E\[37;2m"
+      FAINT="$E\[37;2m" ; UFAINT="$E\[30;22m"
+   else
+      QUOTED="$E\[37;22m"
+      GRAY="$E\[2m"
+      FAINT="$E\[2m" ; UFAINT="$E\[22;22m"
+   fi
+   clear_col="s/$E\[[^a-zA-Z]*[a-zA-Z]//g"
+   if [ -n "$colorless" ] ; then
+      BBOLD="$BOLD"
+   else
+      DBG "BGC= $BGC"
+      DBG "theme= $theme"
+      if [ "$theme" = "-L" ] ; then
+         BGC="${BGC:-7}"
+         DEF="$E\[30m"
+         SEC_MAJ="$E\[${SMD_SEC_MAJ:-33;2}m"
+         SEC_MIN="$E\[${SMD_SEC_MIN:-33}m"
+         SSEC_MAJ="$E\[${SMD_SSEC_MAJ:-36;1;2}m"
+         SSEC_MIN="$E\[${SMD_SSEC_MIN:-36;1;2}m"
+         SSSSEC_MAJ="$E\[${SMD_SSSSEC_MAJ:-34;3;2}m"
+         SSSSEC_MIN="$E\[${SMD_SSSSEC_MIN:-34;3}m"
+         SSSSSEC_MAJ="$E\[${SMD_SSSSSEC_MAJ:-34;3}m"
+         SSSSSEC_MIN="$E\[${SMD_SSSSSEC_MIN:-34;3}m"
+         ACOL="$E\[${SMD_ACOL:-34;2}m"
+         AECOL="$E\[${SMD_AECOL:-30;22}m"
+         LNCOL="${SMD_LNCOL:-32;2}"
+         LNDST="${SMD_LNDST:-32;22}"
+         PCOL="${SMD_PCOL:-35;2}"
+         PCOLD="${SMD_PCOLD:-35;22}"
+      else
+         BGC="${BGC:-0}"
+         DEF="$E\[37m"
+         SEC_MAJ="$E\[${SMD_SEC_MAJ:-33;1}m"
+         SEC_MIN="$E\[${SMD_SEC_MIN:-33;2}m"
+         SSEC_MAJ="$E\[${SMD_SSEC_MAJ:-36;1}m"
+         SSEC_MIN="$E\[${SMD_SSEC_MIN:-36;2}m"
+         SSSSEC_MAJ="$E\[${SMD_SSSSEC_MAJ:-36;3}m"
+         SSSSEC_MIN="$E\[${SMD_SSSSEC_MIN:-36;3}m"
+         SSSSSEC_MAJ="$E\[${SMD_SSSSSEC_MAJ:-34;3;2}m"
+         SSSSSEC_MIN="$E\[${SMD_SSSSSEC_MIN:-34;3}m"
+         ACOL="$E\[${SMD_ACOL:-34;2}m"
+         AECOL="$E\[${SMD_AECOL:-37;22}m"
+         LNCOL="${SMD_LNCOL:-32;22}"
+         LNDST="${SMD_LNDST:-32;2}"
+         PCOL="${SMD_PCOL:-35;22}"
+         PCOLD="${SMD_PCOLD:-35;2}"
+      fi
+      SSSEC_MAJ="$E\[${SMD_SSSEC_MAJ:-34;1}m"
+      SSSEC_MIN="$E\[${SMD_SSSEC_MIN:-34}m"
+      REFCOL="$E\[${SMD_REFCOL:-34}m"
+
+      D="${E}\[m"
+      BBOLD="$E\[0;1m"
+      LNC="$E\[${LNCOL}m"
+      PC="$E\[${PCOL}m"
+
+      note_c="$E\[34m"
+      tip_c="$E\[32m"
+      imp_c="$E\[35m"
+      wrn_c="$E\[33m"
+      caution_c="$E\[31m"
+
+      if [ -z "$has_gnu_sed" ] ; then true ;
+      elif [ -x "$(command -v batcat)" ] ; then
+         BAT=batcat
+      elif [ -x "$(command -v bat)" ] ; then
+         BAT=bat
+      else
+         echo "bat not found, syntax highlighting disabled. You can install bat with:" >&2
+         echo " > sudo apt-get install bat" >&2
+      fi
+   fi
+   if [ -n "$BAT" ] ; then
+      if [ -z "$base_term" ] ; then italics="--italic-text always" ; fi
+      if [ "$theme" = "-L" ] ; then
+         btheme="gruvbox-light"
+      else
+         btheme="gruvbox-dark"
+      fi
+      highlighter="$BAT --theme $btheme --color always $italics --style plain -P -l"
+      highlight=$(cat <<EOF
+         /^$T F/{
+            p
+            s/^$T F *\r\?[\`~]* \?\([^\n]*\)$/\1/   # save the language
+            /^$/{
+               # anonymous code
+               :skip_code; n; /^$T/b end; p; b skip_code
+            }
+            s/$/\n,$LANG_ALIASES,/
+            s/^\(.*\)\n.*\1:\([^,]*\)/\2\n/
+            s/\n.*//
+            h; t acc_code
+            :acc_code
+               n
+               /^$T/b end_code
+               $escape
+               H
+               b acc_code
+            :end_code
+            x
+               /\n/{
+                  s/^\([^\n]*\)\n\(.*\)$/echo '\2' | $highlighter '\1' || echo '\2'/e
+                  p
+               }
+               $Z;
+            x
+            b end
+         }
+EOF
+)
+   fi
+fi
+
+# OSC8 links '\e]8;;http://example.com\e\\This is a link\e]8;;\e\\\n'
+# Web addresses: http:// or https:// ;  ftp:// for FTP, file:// for local files
+# mailto:.. for e-mail addresses.
+if [ "$TERM" = linux ] || [ -n "$lint_mode" ] ; then
+   EL () {
+      echo -n "$2"
+   }
+   process_link="$(cat <<EOF
+      s/!\[\([^][]*\)\](\([^ )]*\))/!${DEF/\[/$OB}${FAINT/\[/$OB}$OB${UFAINT/\[/$OB}$E$OB${PCOL}m\1${DEF/\[/$OB}${FAINT/\[/$OB}$CB(${FAINT/\[/$OB}$E$OB${PCOLD}m\2${DEF/\[/$OB}${FAINT/\[/$OB})${UFAINT/\[/$OB}/g
+      s/\[\([^][]*\)\](\([^ )]*\))/${DEF/\[/$OB}${FAINT/\[/$OB}$OB${UFAINT/\[/$OB}$E$OB${LNCOL}m\1${DEF/\[/$OB}${FAINT/\[/$OB}$CB($FAINT$E\[${LNDST}m\2$DEF$FAINT)$UFAINT/g
+      s/\[\([^][]*\)\]\[\([^ )]*\)\]/${DEF/\[/$OB}${FAINT/\[/$OB}$OB${UFAINT/\[/$OB}$E$OB${LNCOL}m\1${DEF/\[/$OB}${FAINT/\[/$OB}$CB\[$UFAINT$REFCOL\2$DEF$FAINT\]$UFAINT/g
+EOF
+)"
+else
+   EL () {
+      echo -n "$1"
+   }
+   osc8 () {
+      echo "$E\]8;;$2$E$BA$1$E\]8;;$E$BA"
+   }
+   clear_osc8="s/$E\]8;;[^$E]*$E$BA//g"
+   path=$(pwd)
+   protect (){
+      local tmp="$1"
+      echo -n "${tmp//\\/\\\\}"
+   }
+   path="$(protect "$(pwd)")"
+   file="$(protect "$1")"
+   process_link="$(cat <<EOF
+      s/\[!\[\([^][]*\)\](\([^ )]*\))\](/$(osc8 "${PC}image:$DEF" "\n(\n\2\n)\n")⍽[\1](/g
+      s/!\[\([^][]*\)\](\([^ )]*\))/$(osc8 "$PC\1$DEF$UFAINT" "\n(\n\2\n)\n")/g
+      s/\[\([^][]*\)\](\([^ )]*\))/$(osc8 "$LNC\1$DEF$UFAINT" "\n(\n\2\n)\n")/g
+      s/\[\([^][]*\)\]\[\([^ )]*\)\]/$LNC\1$DEF$FAINT\[$UFAINT$REFCOL\2$DEF$FAINT\]$UFAINT/g
+      $(if [ -z "$no_abs" ] ; then
+         echo -E "s/\n(\n\(\(mailto:\|\(https\?\|ftp\|file\):\/\/\)[^\n]*\)\n)\n/\1/g"
+         echo -E "s|\(\n(\n\)\(\#[^\n]*\)\(\n)\n\)|\1$file\2\3|g"
+         echo -E "s|\n(\n\([^\n]*\)\n)\n|file:\/\/${path}\/\1|g"
+      else
+         echo -E "s/\n(\n\([^\n]*\)\n)\n/\1/g"
+      fi)
+EOF
+)"
+   o8_st="\($E\]8;;\([^$E\n]\|${E}[^$BA]\)*$E$BA\)"
+   o8_con="\(\([^\n$E]\|${E}[^]]\)*\)"
+   o8_nn="\(\([^$E]\|${E}[^]]\)*\)"
+   o8_end="\($E\]8;;$E$BA\)"
+   repair_osc8="s/^\([^\n]*\)$o8_st$o8_con\n$o8_nn$o8_end/\1\2\4\8\n\2\6\8/;t o8ed;:o8ed"
+fi
+
+FOOT() {
+   true
+}
+
+opts+=( "--" )
+
+if [ -n "$uncolored" ] || [ -n "$recurse" ] ; then
+   conceal () {
+      true
+   }
+elif [ "$TERM" = "linux" ] || [ "$TERM" = "xterm-kitty" ] || [ -n "$konsole" ]; then
+   conceal () {
+      echo -n "$E\[0;3${BGC}m$1$DEF"
+   }
+else
+   conceal () {
+      echo -n "$E\[8m$1$E\[28m"
+   }
+fi
+
+if [ -n "$lint_mode" ] ; then
+   sech=' '
+   lo_cmd="echo -n"
+   fo_cmd="true"
+   star_rule="i ${BBOLD}******$D"$'\n'"d"
+else
+   FLUSH_FOOT="${SMD_FLUSH_FOOT:-3}"
+   if [[ "$FLUSH_FOOT" =~ [0-9][0-9]* ]] ; then
+      FOOT() {
+         echo -n "$1"
+      }
+      flush="/$T#\{1,$FLUSH_FOOT\}[^\#]/b flush"
+   fi
+   sech="$(if [ -n "$uncolored" ] || [ -n "$recurse" ] ; then echo -n " " ; else conceal "#"; fi)"
+   lo_cmd="true"
+   fo_cmd="echo -n"
+   star_rule="g; s/\(.*\).....\1$/\1* * */; s/─/ /g; b"
+
+   true_line="s/-/─/g"
+   endp=']),;.:!'
+   if [ -z "$toc" ] ; then expand_sp=$(cat <<EOF
+      h
+      s/.*\n\([^\n]*\)\n.*/\1/
+      $clear_col; $clear_osc8
+      s/././g
+      G
+      s/\(\n[^\n]*\)\n.*/\1/; t exp_psp
+      :exp_psp
+         s/^\.\(\.*\n.*[$endp]\) \(\([^ ]\|[$endp]  \|[^$endp] \)*\)$/\1  \2/
+         t exp_psp
+      :exp_sp
+         s/^\.\(\.*\n.*\([$endp] \|[^ ]\)\) \(\([^ ]\|[$endp]   \|[^$endp]  \)*\)$/\1  \3/
+         t exp_sp
+      /^\n/!{ # underfull hbox
+         g; s/\n.*//
+      }
+      s/^[^\n]*\n//;t expanded;:expanded
+      p; $Z; x
+EOF
+);    center_array=$(cat <<EOF
+      h; s/^$T A [rcl]*//; s/ /\./g; s/$/   /; t center_a
+      :center_a
+         s/^\(.\{$SMD_W\}\).*/\1/;t centered_a
+         s/\( *\)/\1\1\1/g;t center_a
+      :centered_a
+      G
+      s/[^ ]*\( *\)\1 \?\n\([^|]*\)/\2\1/
+EOF
+)   ;else expand_sp="P"; fi
+fi
+
+# LO: Lint Only  FO: Final Only FL: $1 if Final else $2
+LO () {
+   $lo_cmd "$1"
+}
+FO () {
+   $fo_cmd "$1"
+}
+FL () {
+   $fo_cmd "$1"; $lo_cmd "$2"
+}
+
+ifsmall () {
+   if [ -n "$small" ] ; then echo "$1"; fi
+}
+
+if [ -n "$has_gnu_sed" ] && [ -z "$no_rec" ] ; then
+   quoter="${0//\//\\\/}"
+   escape_q="$escape"
+   quote="s/^\( *\)[^\n]*\n\([^\n]*\)\n\(.*\)$/echo '\2'; echo '\3' | $quoter ---ZZZ $SMD_W \"\1  $hindent\" $lint_mode $small $theme $uncolored $no_abs/e"
+else
+   quote="s/^\([^\n]*\)\n\(.*\)$/\2/"
+fi
+
+if [ -z "$recurse" ] ; then
+   if [ -z "$1" ] ; then
+      input_file="-"
+   else
+      while [ ! -f "$1" ] || { [ -n "$in_place_mode" ] && [[ -L "$1" ]] ; } ; do
+         if [ ! -f "$1" ] ; then
+            echo "\"$1\": no such file." >&2
+         else
+            echo "\"$1\": -i does not accept symlinks." >&2
+         fi
+         shift
+         if [ -z "$1" ] ; then
+            exit
+         fi
+      done
+      input_file="$1"
+      if [ -n "$show_names" ] ; then echo "<$1>" >&2; fi
+   fi
+fi
+
+if [ -t 1 ] && [ -z "$in_place_mode" ] ; then
+   abs_path="$(realpath "$input_file")"
+   rel_path="$(realpath --relative-to . "$input_file")"
+   if [ "${#abs_path}" -le "${#rel_path}" ] ; then
+      the_path="$abs_path"
+   else
+      the_path="$rel_path"
+   fi
+   echo -ne "\e]2;smd $the_path\e\\"
+fi
+
+# {{{1 main
+# {{{2 Prelude:
+#  - standardize line endings
+#  - remove some control characters
+#  - remove ANSI escape sequences
+#  - expand leading tabs
+if [ -z "$recurse" ] ; then
+   sed -u -z "s/\r\n\?/\n/g" "$input_file" |
+   sed -u \
+      -e "s/[\a\f\v]//g" \
+      -e "s/${E}\[[^a-zA-Z]*[a-zA-Z]//g"  \
+      -e "s/\t/    /g"  |
+   sed -u -f <(cat <<EOF
+      1{
+         /^\([-+;]\)\1\1$/!{s/^/$T\n/;t}
+         h
+         :a
+            \${b end}
+            n; G;
+            /^\([^\n]*\)\n\1$/!{
+               s/\n.*$//
+               b a
+            }
+         :end
+         x; z; x
+         s/\n.*$/$T/
+      }
+EOF
+   )
+else
+   echo -e "\e[m"
+   cat
+fi |
+#
+# {{{2 Part 1 -- The unfunny part:
+# hold: the indentation stack + itemize info
+#  - parse blocks w.r.t. indentation and give item numbers
+#  - parse section/indent code/fenced code ($T#..., $T C<indent>, $T F<indent><fence><lang>)
+#  - ^$T$ ends environments
+#  - parse rules ($T*/$T-) and sec alt form ($T==/$T--)
+#  - par continuations begin with " *\r"
+sed -u -f <( cat <<EOF
+   # In the hold buffer:
+   # output_indent input_indent [item1/quote] indent1 [item2/quote] indent2 ...
+   # separated by \n
+   0,/$T$/{
+      /$T$/!{
+         $(FO "1 {s/.*/ $BOLD$GRAY┌┐/;t}")
+         s/^[^:]*:/$BOLD$GRAY&$UBOLD$GRAY/
+         s/^\( *\)- /\1$BOLD$GRAY-$UBOLD$GRAY /
+         s/^/$GRAY$(FO ' ││ ')/
+         t
+      }
+      $(FO "s/^.\+$T$/ $BOLD$GRAY└┘$T/")
+      $(LO "s/^/$GRAY/")
+      n; x; s/.*/$indent\n\n/; x; t init;:init
+   }
+
+   s/^ *\r\?$//;t
+
+   # section
+   /^ \{0,3\}\r\?\#\{1,5\} *[^ ]/{
+      x; s/.*/$indent\n\n/; x;
+      s/^ *\r\?//
+      # sections have a trailing space
+      s/ *\(\#\{1,5\}\) */$T\1 /
+      s/ *$/ /
+      t
+   }
+
+   s/^ \{,3\}\r\([=-]\)\1* *$/$T\1\1/;t
+   s/^ \{,3\}\r\?\(\* *\)\{3,\} *$/\n$T*\n/;t
+   s/^ \{,3\}\r\?\(\- *\)\{3,\} *$/\n$T-/;t
+
+   :par
+      G
+      /^ *\r: /{
+         s/^\( *\)\(\r: [^\n]*\n *\n\(\1 *\)\)/\3\2/
+         t nest_def;:nest_def
+      }
+      s/^\( *\)\([^\n]*\n *\n\1\n\)/\2/; t aligned
+      # Put the marker | at root
+      s/^\([^\n]*\n\) *\n *\n/\1\n\n|/
+   :dive
+      s/\n|\([^ \n][^\n]*\n\)/\n\1|/
+      t dum;:dum
+      s/^\( *\)\([^\n]*\n\)\([^\n]*\n\)\(.*\n\)|\1\n/\2    \3\1\4\1\n|/
+      t dive
+      s/\n|.*//
+      s/\([^\n]*\n\)    /\1$indent/
+      t aligned
+   :aligned
+      s/^\( \{0,3\}\r\?\([1-9][0-9]*\)\)\(\.\|)\) \+\(.*\)/\4\n\2\n\1\. /; t enumerate
+      s/^\( \{0,3\}\r\?\([-+*]\)  *\)\(.*\)/ \2 \3\n\1/; t b_item
+      /^ \{0,3\}\r: /{
+         i $T:
+         s/^ \{0,3\}\r: *\([^\n]*\n\([^\n]*\)\)/\2\1/
+         t sav
+      }
+
+      /^ *\r\?\([\`~]\)\1\{2,\}/b code
+      /^ *\r/{
+         s/ *\([^\n]*\n\( *\)\)/\2\1/
+         t par_done
+      } # line continuation
+      s/^ \{4\}\([^\n]*\)\n \?\( *\).*/${T} C\2\n\1/;t icode
+      s/\n[^\n]*[^ \n][^\n]*$//    # Leave item env
+      s/^ *\([^ ][^\n]*\n\( *\)\n\)/\2\1/
+   :sav
+   h; x
+      s/^[^\n]*\n//
+   x
+   :par_done
+   s/\n.*//
+   :nxt_par
+   n
+   s/^\( *\)/\1\r/
+   t init
+
+   :code
+      h; x; s/^[^\n]*\n//; x # save
+      s/\( *\)\(\r\?\([\`~]\)\3\{2,\}\) *\([^\n]*\)\n\( *\)\n\( *\).*/$T F\5\2 \4\n\1\6\2\4/
+      P; s/^[^\n]*\n//; t fcode
+      :fcode
+         \${s/\(\r\?\([~\`]\)\2*\).*/\n\1\n/;t end_code}
+         N
+         s/^\(.*\)\n *$/\n\1/;t next_f
+         s/^\( *\)\r\?\([~\`][~\`]*\)\([^~\`][^\n]*\)\?\n\(.*\)\2 *\(.*\)$/\4\n\2\1\n\5/
+         t end_code
+         s/\( *\)  *\([^ \n][^\n]*\)\n\(\1[^ ].*\)/\1\2\n\3/
+         s/^\([^\n]*\)\n\(.*\)$/\2\n\1/
+         :next_f
+            P
+            s/[^\n]*\n//
+            t fcode
+
+      :end_code
+         /^ *[^ \n]/P
+         s/^[^\n]*\n$(FO "\([^\n]*\)")/$T$(FO "\1!")/; P
+         s/${T}[^\n]*\n//
+         /^[^ \n]/{ G; t aligned }
+         d
+
+   :enumerate
+      # Put the post-increment marker \r after the last digit
+      s/\(\n[1-9][0-9]*\)\n[1-9][0-9]*\(\n[^\n]*\)$/\1\r\2/;t inc
+      s/\n[1-9][0-9]*\(\n[^\n]*\)$/\n1\1/;t enum_done
+      :inc
+         s/9\r\([^\n]*\n[^\n]*\)$/\r0\1/; t inc
+         s/\n\r\([^\n]*\n[^\n]*\)$/\n1\1/; t enum_done
+         s/$/\n0123456789/
+         s/\(.\)\r\([^\n]*\n[^\n]*\)\n[^\n]*\1\(.\)[^\n]*$/\3\2/
+      :enum_done
+         s/^.*\n\([0-9]*\)\n[^\n]*$/\1. &/
+         t item
+
+   :b_item
+      s/\(\n[^ \n][^ \n]*\)\n-\(\n[^\n]*\)$/\1\2/;t item
+   :item
+      s/\r//;t sp
+      :sp; s/[^ \n]\( *\)$/ \1/; t sp
+      s/\([^\n]\n\)\([^\n]*\n\)\(.*\n\( *\)\)$/\1    \2\4\3/
+      s/^\([^\n]*\n   \( *\)\)/\2\1/
+      # break the item line to have a clear indent
+      $(FO "t box; :box; s/^\( *[-+*] \[[ xX]\] *\)/$T.\1\n!/; t splitted")
+      $(FO "/^ *[-+*] \[[^]]\([^]]\|\](\)*\][\n ]/{s/^ \( *\)[-+*] /$T.\1\n\r/; t splitted}")
+      s/^\( *[^ ]* *\)/$T.\1\n/
+      :splitted
+      P; s/^[^\n]*\n\([^\n]*\)\n\( *\)/\2\1\n\2/
+      s/^   \( *\)\r/\1/
+      t sav
+
+   :icode
+      \${
+         i $T
+         d
+      }
+      n
+      s/^ *$//; t icode
+      G
+      s/^\( *\) \{4\}\([^\n]*\)\n *\n\1\n.*/\2/;t icode
+   i $T
+   s/\n.*//
+   t init
+EOF
+) |
+#
+# {{{2 Part 1
+# hold: numbering aux
+#   - relate terms and definition list
+#   - standardize section alternate form
+#   - section numbering
+sed -u -f <( cat <<EOF
+   1{ x; s/.*/0.0.0.0.0.0.0.0\n0123456789/; x; t dum;:dum }
+   0,/$T$/b
+
+   /^$T [A-Z]/{
+      :enter; n ;/^$T/!b enter
+   }
+   /^$T\#/b num
+   /^$T/b
+   \$b
+   N
+   /\n$T--$/{
+      s/^ *\r\?\([^\n]*\).*/$T\#\# \1 /; t num
+   }
+   /\n$T==$/{
+      s/^ *\r\?\([^\n]*\).*/$T\# \1 /; t num
+   }
+   /^ *\r[^\n]*\n$T:/{
+      s/^\( *\)\r/\n\1/
+      P
+      s/^\n//
+   }
+   s/^\( *\)\([^\n]*\)\(\n$T:\)/$T?\1$BOLD\2$UBOLD\3/;t def
+   :end
+   P; D
+
+   :def
+   n
+   t def_loop
+   :def_loop
+   n
+   / *\r/b def_loop
+   /^$T:/b def
+   b
+
+   :num
+      $( if [ -n "$no_lev1" ] ; then echo -n "/^$T\# /d"; fi )
+      $( if [ -n "$sec_pad" ] ; then echo -n "s/^$T/&$sec_pad/;t spad;:spad"; fi )
+      s/^\($T\#\#* \) *\(\([1-9][0-9]*\)\( \?-\|\(\(\.[1-9][0-9]*\)\+\)\)\)\( .*\)/\1\7\n\3\5/;T
+      H; x
+         s/\(\n.*\)\(\n$T\(\#*\)\)\#[^\#].*/\3\1/
+         s/[0-9]\{1,\}/&+/
+         t select
+         :select; s/+\(\.[0-9]\{1,\}\)\(.*\)\#/\1+\2/; t select
+         :nines; s/9+/+0/; t nines
+         s/\(^\|\.\)+/\1!1/;t done_inc
+         s/\([0-9]\)+\(\(.*\n.*\)\1\(.\)\)/!\4\2/; t done_inc
+         :done_inc
+         s/!\([0-9]*\)/\1!/
+         :reset; s/\(![^\n]*\)[1-9][0-9]*/\10/; t reset
+         H
+         s/!//
+      x
+      s/![^\n]*\n[^\n]*$/\n/
+      :fmt
+      s/\(\.\?\)[1-9][0-9]*\(\n[^\n]*\)\(\1[1-9][0-9]*\)\n\([^\n]*\)$/\2\n\3\4/; t fmt
+      s/^\($T\#\#* \)\([^\n]*\)\n[^\n]*\n[^\n]*\n\([^\n]*\)$/\1\3\2/
+      s/^$T\#\#* [1-9][0-9]* /&- /
+EOF
+) |
+#
+# {{{2 Part 1 -- parse, defer and layout reference & footnote definitions []:...
+# hold: footnote & references
+# mergeable ?
+sed -u -f <( cat <<EOF
+   0,/$T$/b
+   /^$T [A-Z]/{
+      :enter; n ;/^$T/!b enter
+   }
+   $flush
+   /^$T/b end
+   s/^\( *\)\r\?\[\(\^[^]]*\)\]: *\(.*[^ ]\) *$/$T\[\1$DEF$FAINT\[$UFAINT$REFCOL\2$DEF$FAINT\]:$UFAINT \3$D/; t foot
+   s/^\( *\)\r\?\[\([^]]*\)\]: *\(.*[^ ]\) *$/$T\[\1$DEF$FAINT\[$UFAINT$REFCOL\2$DEF$FAINT\]: $LNC\3$D/; t foot
+   :end
+   \${p; s/.*/\n/; t flush}
+   b
+
+   :foot
+      $(FOOT "H; d")
+      b end
+
+   :flush
+      $(FOOT "x; /./{s/^/$T-/; p; z}; x")
+      /^\n$/d
+      b
+EOF
+) |
+#
+# {{{2 Interlude -- Blank lines management
+# hold: prv sec
+#  - remove one blank line before i code (was imposed by syntax)
+#  - move blank before env. closure after it.
+#  - remove blank lines (but one) after starting fenced code
+#  - remove blank lines before closing environment
+#  - remove blank lines before and after sec
+#  - remove leading blanks lines but one and set 1 trailing blank line
+#  - mark sections followed by another section
+sed -u -f <( if [ -n "$lint_mode" ] ; then (cat <<EOF
+   0,/$T$/{/$T/{n; b init}; b}
+   b start
+   :init
+      /^$/n # The first line, if blank, is kept no matter what.
+      :init_again; /^$/{
+         N
+         s/\n//
+         t init_again
+      }
+      /^$T\#/{ s/$/\r/; t sec } # mark section if first non-blank
+EOF
+); else echo "0,/$T$/b"; fi
+cat <<EOF
+   :start
+   /./b here
+   d
+
+   :cont
+      n
+   :here
+      /^$T\#/b sec
+      /^$T F/{n; /./b here; b}
+      /^$/b blank
+      b cont
+
+   :leave
+      P
+      s/[^\n]*//
+      t blank
+   :blank
+      \${ i
+         d; }
+      N
+      /\n$/b blank
+      /\n$T F/{n; /./b here; b}
+      s/^\(\n\?\)\n*\($T *\r\?\(\`\|~\)\+.*\)\?$/\2\1/;t leave
+      s/^\n\($T C\)/\1/;t cont
+      s/^\n*\($T\#\)/\1/;t sec
+      s/^\(\n\?\)\n*/\1/
+      t cont
+
+   :sec
+      x
+   :again
+      \${x; b}
+      N
+      s/^\n//
+      /^$/t again
+      /^$T\#/!{
+         x; p; z; x; t here}
+      H; z; x
+      t sec_dum;:sec_dum
+      s/^$T\#\# [^\n]*\n$T\#\#\# [^\n]*/&\r/;t end_sec
+      s/\n$T\#/\r\r&/
+   :end_sec
+      P; D
+EOF
+) |
+#
+# {{{2 Part 2 -- in-paragraph processing & alignment:
+# hold: none
+#  - parse quote env
+#  - add 0-width space after wide chars wherever alignment is needed
+#  - standardize par break into <br>
+sed -u -f <( cat <<EOF
+   0,/$T$/b
+   :init
+      /^$T [A-Z]/{
+         :enter; n ;/^$T/b; b enter
+      }
+      /^${T}/b
+      s/^\( *\)\r\?>\(\( \?>\)*\( \|$\)\)/\1>\2/;t quote
+      s/^\( *\)\r|/\1|/;t wide
+      s/ *\(\(<br\( *\/\)\?>\|\/\/\|  \) *\|$BA\)$/<br>/
+   :wide
+      s/\xE2\x80\x8B//g
+      # some double-width characters. TODO: the others!
+      #s/\([０１２３４５６７８９ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ，．：；！？＂＇｀＾～￣＿＆＠＃％＋－＊＝＜＞（）［］｛｝｟｠｜￤／＼￢]\)/\1\xE2\x80\x8B/g
+      # does not work:
+      #s/\([０-９Ａ-Ｚａ-ｚ，-＃％-＞（-｠｜-￢＄-￥]\)/\1\xE2\x80\x8B/g
+      s/\([你好世界]\)/\1\xE2\x80\x8B/g
+      b
+
+   :quote
+      s/$/\n|NOTE$note_c|TIP$tip_c|IMPORTANT$imp_c|WARNING$wrn_c|CAUTION$caution_c|/
+      t dum_q;:dum_q
+      #🠊 → – ─╴test╶─
+      $(FO "s/^\( *\)> \?\[!\([A-Z]*\)\]\n.*\2\([^|]*\).*/$T Q\1\3\n\3[\L\u\2\E]/")
+      $(LO "s/^\( *\)> \?\(\[!\([A-Z]*\)\]\)\n.*\3\([^|]*\).*/$T Q\1\4\n\4\2/")
+      t enter_q
+      s/\n.*//
+      s/^\( *\)>/$T Q\1$DEF$GRAY\n\n/
+      t enter_q
+   :enter_q
+      P; s/[^\n]*\n//
+      /\n/P; s/[^\n]*\n//
+      t nxt_quote
+   :nxt_quote
+      s/^ //;t quoted;:quoted
+      \${p; s/.*/\n/; t end_quote}
+      n
+      s/^\( *\)\r>\(\( \?>\)*\( \|$\)\)/\2/;t nxt_quote
+      :end_quote
+      i $T$(FO "$(if [ -z "$recurse" ] ; then echo -n "!"; fi)" "")
+      \${/^\n$/d}
+      b init
+EOF
+) |
+#
+# {{{2 Part 2 -- in-paragraph processing & alignment:
+# hold: none
+#  - merge pars
+#  - remove useless par breaks
+#  - par begin with "\r"
+sed -u -f <( cat <<EOF
+   0,/$T$/b
+   /^$/b
+   /^$T [A-Z]/{
+      :enter; n; /^$T/b; b enter
+   }
+   /^${T}/b
+   /^ *|/b
+   s/^\( *\)\r\?/\r\1/; t par
+   :par
+   $(if [ "$no_par_merge" = "2" ] ; then
+      echo '/[,?;.:!] *$/{b end}'
+   fi)
+   $(if ! [ "$no_par_merge" = "1" ] ; then
+      ju=(
+         "\$b"
+         'N'
+         '/<br>\n/{'
+         '  s/^\r\( *\)\([^\n]*\)\n *\r/\r\1\2\n\1/;t end'
+         '  s/<br>\n/\n/;t end'
+         '}'
+         's/ *\n *\r/ /'
+         't par'
+         ':end'
+      )
+      IFS=$'\n'; echo -E "${ju[*]}"
+   fi; )
+   P; D
+EOF
+) |
+#
+# {{{2 Part 2 -- in-paragraph processing & alignment:
+# hold: temporary data
+#  - protect quotes, process bold/it/stricken out, un-protect
+# Keeping two different processing is not a great idea.
+# Having tons of macros in a single general case is not great either.
+( ([ -n "$uncolored" ] && [ -n "$lint_mode" ] && sed -u -f <( cat <<EOF
+   0,/$T$/b
+   /^$T [QCF]/{
+      :enter; n ;/^$T/b; b enter
+   }
+   /^${T}[[*+-.]/b
+   /^$/b
+   :prot_term
+   s/^\(${T}?⍽*\) /\1⍽/;t prot_term
+
+   b protect
+   :protected
+      h; x
+         s/^[^\n]*\n\([^\n]*\)\n[^\n]*/\1/
+         y/\` /\f⍽/
+         s/>/${CA}/g
+         s/\[/${OB}/g
+         s/\]/${CB}/g
+      H; $Z; x
+      s/^\([^\n]*\)\n\([^\n]*\n\)\([^\n]*\)\n\([^\n]*\)/\1\4\3/
+      t protect
+   :protect
+      s/^\(\([^\`$BA]\|${BA}[^\`]\)*\)$BA\`/\1\f/; t protect
+      s/\(^[^\`]*\)\`\(\([^\`]\+\`\{2,\}\?\)*[^\`]\+\)\`\([^\`]\|$\)/\1\f\n\2\n\f\4/;t protected
+      s/\(^[^\`]*\)\`\`\(\([^\`]\+\`\{3,\}\?\)*[^\`]\+\)\`\`\([^\`]\|$\)/\1\f\f\n\2\n\f\f\4/;t protected
+   :protect_sq
+      s/\(\[[^]]*\) /\1⍽/; t protect_sq
+
+   /<br\( *\/\)\?>./{
+      s/^\( *\)<br\( *\/\)\?>/\1/;t br
+      :br s/^\( *\)\(.*[^ ]\) *<br\( *\/\)\?> *\([^ \n]\)/\1\2<br>\n\1\4/;t br
+   }
+   s/${CA}/>/g
+   s/${OB}/\[/g
+   s/${CB}/\]/g
+   y/\f/\`/
+EOF
+)) || sed -u -f <( cat <<EOF
+   0,/$T$/b
+   /^$T [QCF]/{
+      :enter; n ;/^$T/b; b enter
+   }
+   /^${T}[[*+-.]/b
+   /^$/b
+   :prot_term
+   s/^\(${T}?⍽*\) /\1⍽/;t prot_term
+
+   # protect escaped symbols
+   s/$BA$ST/$(LO "$BA")\a/g
+   s/${BA}_/$(LO "$BA")\r/g
+   s/$BA~/$(LO "$BA")\v/g
+
+   t protect; b protect
+
+   :protected
+      h; x
+         s/^[^\n]*\n\([^\n]*\)\n[^\n]*/$FAINT\1$UFAINT/
+         $(FO "s/^\($FAINT\) \`/\1\`/; s/\` \($UFAINT\)$/\`\1/")
+         y/*_\`~ /\a\r\f\v⍽/
+         s/>/$E>/g
+         s/\[/${OB}/g
+         s/\]/${CB}/g
+         $(FO "s/-/$E~/g")
+         $(FO "s/\./$E!/g")
+      H; $Z; x
+      s/^\([^\n]*\)\n\([^\n]*\n\)\([^\n]*\)\n\([^\n]*\)/\1\4\3/
+      t protect
+   :protect
+      s/^\(\([^\`$BA]\|${BA}[^\`]\)*\)$BA\`/\1$(LO "$BA")\f/; t protect
+      s/\(^[^\`]*\)\`\`\([^\`]\+\(\(\`\`\{2,\}\?\)[^\`]\+\)*\)\`\`\([^\`]\|$\)/\1$(LO '\f\f')\n\2\n$(LO '\f\f')\5/;t protected
+      s/\(^[^\`]*\)\`\([^\`]\+\(\(\`\{2,\}\)\?[^\`]\+\)*\)\`\([^\`]\|$\)/\1$(LO '\f')\n\2\n$(LO '\f')\5/;t protected
+      t protected
+
+   $(LO ":protect_sq; s/\(\[[^]]*\) /\1⍽/; t protect_sq")
+
+   s/\*\*\(\([^*]\|\*[^*]\)*\**\)\*\*/$BOLD$(LO '\a\a')\1$(LO '\a\a')$BOLD/g
+   s/\(^\|[^a-zA-Z]\)__\(\([^_]\|_[^_]\|__[a-zA-Z]\)*_*\)__\([^a-zA-Z]\|$\)/\1$BOLD$(LO '\r\r')\2$(LO '\r\r')$BOLD\4/g
+   s/\*\([^*]*\)\*/$IT$(LO '\a')\1$(LO '\a')$IT/g
+   s/\([^a-zA-Z]\|^\|$BOLD\)_\(\([^_]\|_[a-zA-Z]\)*\)_\([^a-zA-Z]\|$\)/\1$IT$(LO '\r')\2$(LO '\r')$IT\4/g
+   s/\($BOLD\([^$E]\|${E}[^[]\|$E\[[^1]\)*\)$BOLD/\1$UBOLD/g
+   s/\($IT\([^$E]\|${E}[^[]\|$E\[[^3]\|$E\[3[^m]\)*\)$IT/\1$UIT/g
+   s/~~\(\([^~]\|~[^~]\)*\)~~/$SO$(LO ~~)\1$(LO ~~)$USO/g
+
+   # unprotected <br> inside line
+   /<br\( *\/\)\?>./{
+      s/^\( *\)<br\( *\/\)\?>/\1/;t br
+      :br s/^\( *\)\(.*[^ ]\) *<br\( *\/\)\?> *\([^ \n]\)/\1\2<br>\n\1\4/;t br
+   }
+   s/$E>/>/g
+   s/$E\[/$E$OB/g
+
+   # OSC8
+   # remove terminal () pairs not involved in a link
+   :protect_paren; s/\([^]]\)(\([^()]*\))/\1$OP\2$CP/g; t protect_paren
+   $process_link
+   s/\[\(\^[^]]*\)\]/$DEF$FAINT\[$UFAINT$REFCOL\1$DEF$FAINT\]$UFAINT/g
+   s/<!--\([^-]\|-[^-]\|--\+[^->]\)*-->/$(LO "$FAINT&$UFAINT")/g
+   s/${OA}/</g
+   s/${CA}/>/g
+   s/${OB}/\[/g
+   s/${CB}/\]/g
+   s/${OP}/(/g
+   s/${CP}/)/g
+
+   $(FO "/[^|_: -]/{")
+   $(FO "   s/\(^\|[^.]\)\.\.\.\([^.]\|$\)/\1…\2/g")
+   $(FO "   s/\(^\|[^-]\)---\([^-]\|$\)/\1––\2/g")
+   $(FO "   s/\(^\|[^-]\)--\([^-]\|\)/\1–\2/g")
+   $(FO "}")
+   $(FO "s/$E~/-/g")
+   $(FO "s/$E!/./g")
+
+   # un-protect all but spaces
+   y/\a\r\f\v/*_\`~/
+   # these were true \r: sections have a trailing space bef. \r (see part 1)
+   s/\(⍽\| \)\(_\?\)__$/ \2\r\r/
+   s/\(⍽\| \)_\(\(\r\r\)\?\)$/ \r\2/
+   s/^_/\r/
+
+   # contract spaces
+   s/^\(\r\? *\)/\1\n/
+   h
+   s/\n.*//
+   x; s/^[^\n]*\n//; s/  */ /g; H; x
+   s/\n//
+EOF
+)) |
+#
+# {{{2 Part 2 -- in-paragraph processing & alignment:
+# hold: array padding pattern
+# mergeable with next
+#  - parse array + compute padding pattern
+sed -u -f <(cat <<EOF
+   0,/$T$/b
+   :begin
+   /^$T [A-Z]/{
+      :enter; n ;/^$T/b; b enter
+   }
+   /^${T}[^ ]/b
+
+   /^ *|/b start_array
+   b
+
+   :start_array
+      # output $T A<indent_level>
+      s/\( *\)|/$T A\1\n|/; P; s/[^\n]*\n//
+      # initialize hold buffer
+      h; s/[^|]//g; x;
+      t array
+   :array
+      s/ *\r\?| */|/g
+      /^\( *| *:\?---*:\?\)* *| *$/{ s/---*/---/g }
+      H
+      x
+         $clear_col; $clear_osc8
+         s/[^|\n]/./g
+         s/^/\r/
+         t x
+         :x; s/\r|\(\.*\)\(\.*\)\(.*\n\)|\1\(\.*\)/|\1\2\4\r\3/; t x
+         s/\r.*//
+      x
+      \${p; x; s/^/$T/; p; d}
+      n
+      /^ *\r\?|/b array
+      x; s/^/$T/; p; $Z; x; t begin
+EOF
+) |
+#
+# {{{2 Part 2 -- in-paragraph processing & alignment:
+# hold: array/fenced environments temporary data
+#  - Justifies text.
+#  - Puts the array header in the form:
+#      $P A<alignment pattern> <indent> <padding pattern>
+#    e.g.: $P Arcl    |............|.....|................|
+#  - duplicate rule before and after the array if not in linter mode
+#  - Puts the fenced code header in the form $P F<indent><separator><lang><min_indent>
+sed -u -n -f <(cat <<EOF
+   0,/$T$/{p; b}
+   /^$T A/{
+      :arr; H;  n
+      /^$T/!b arr
+      G
+      # now first line gives indent & width in the form <indent>|.......|.........|
+      s/^$T\([^\n]*\n\)\n$T A\( *\)\n/\2\1/
+      t res;:res
+      h; x
+      s/^.*\n\(\(| *\(:\?---*:\?\) *\)*|\) *\n.*/\1/;t header
+      # backup plan: use the padding pattern to compute a default alignment pattern
+      s/^ *\([^\n]*\)\n.*/\1/
+      s/\.\.*/---/g
+      :header
+      $(FO H)
+      s/:-\{3,\}:/c/g
+      s/-*--:/r/g
+      s/:\?---*/l/g
+      s/|//g
+      s/^/$T A/
+      G
+      x; $Z; x
+      s/\n//
+      $(FO "s/\([^\n]*\n\)\(.*\)\n\([^\n]*\)$/\1\3\n\2/")
+      s/$/\n$T/
+      t end
+   }
+   /^$T F/{
+      :fenced; H;  n
+      /^$T/!b fenced
+      H; G; x; $Z; x
+      s/^[^\n ]*[^\n ]\( *\)$(FO '!\?')\n\n\([^\n]*[^ \n]\) */\2\1/
+      b end;
+   }
+   /^$T [A-Z]/{
+      :enter; p; n ;/^$T/b end; b enter
+   }
+   s/^$T?//;t end
+   /^$T/b end
+   $(if [ -z "$no_just" ] ; then echo -e "s/^\\r//;t just"; fi)
+   :end
+   p
+   d
+
+   :just
+      $(LO "s/^\(\($E\[[^m]*m\)*[^$E]\)\{$SMD_W\}/&\n/;t need_just")
+      $(FO "s/^\(\($E\[[^m]*m\|$E\]8;;[^$E]*$E$BA\)*[^$E]\)\{$SMD_W\}\($o8_end\)\?/&\n/;t need_just")
+      b end
+
+      :need_just
+      s/\([^ ]\) \(\([^-;:/!? ]\([^ ]\| *[-;:/!?]\)*\)\?\)\n/\1\n\2\n/; t split
+      s/\n\([^ ]*\) /\1\n\n/; t split
+      s/\n//
+      b end
+      :split
+         # repair color pairs broken by "\n"
+         s/^\([^\n]*\)\(${PC}\|${LNC}\)\(\([^$E\n]\|${E}[^[]\|$E\[[^3]\)*\)\n\(\([^$E]\|${E}[^[]\|$E\[[^3]\)*\)\($DEF\)/\1\2\3\7\n\2\5\7/
+         s/^\([^\n]*\)\($E\[\(1\|2\)m\)\(\([^$E\n]\|${E}[^[]\|$E\[[^2]\|$E\[2[^2]\)*\)\n\(\([^$E]\|${E}[^[]\|$E\[[^2]\|$E\[2[^2]\)*\)\($E\[22\(;2\3\)\?m\)/\1\2\4\8\n\2\6\8/
+         s/^\([^\n]*\)\($E\[\(3\)m\)\(\([^$E\n]\|${E}[^[]\|$E\[[^2]\|$E\[2[^3]\)*\)\n\(\([^$E]\|${E}[^[]\|$E\[[^2]\|$E\[2[^3]\)*\)\($E\[23m\)/\1\2\4\8\n\2\6\8/
+         s/^\([^\n]*\)\($E\[\(9\)m\)\(\([^$E\n]\|${E}[^[]\|$E\[[^2]\|$E\[2[^9]\)*\)\n\(\([^$E]\|${E}[^[]\|$E\[[^2]\|$E\[2[^9]\)*\)\($E\[29m\)/\1\2\4\8\n\2\6\8/
+         $repair_osc8
+         $expand_sp
+         $(LO P)
+         s/\( *\)[^\n]*\n\([^\n]*\)\n/\1\2/
+         /[^ ]/t just
+         d
+EOF
+) |
+#
+# {{{2 Part 3 -- environments processing
+# hold: fenced code environment temporary data
+# mergeable with next ?
+#  - remove fenced code min indent
+sed -u -f <(cat <<EOF
+   0,/$T$/b
+   /^$T F/{
+      h; s/.*[^ ]\( *\)$/\1/
+      x; s/ *$//
+      :fenced
+      n
+      /^ *$/{ $Z; b fenced}
+      /$T/{ s/ *\($(FO '!')\)$/\1/; t}
+      G
+      s/^\( *\)\(.*\)\n\1$/\2/
+      b fenced
+   }
+EOF
+) |
+#
+# {{{2 Part 3 -- environments processing
+# hold: environment temporary data
+#  - array alignment (consumes array header data) + generic array hrule
+#  - substitute quote environment contents with its results
+#  - code syntax highlighting
+#  - un-protect nbsp, remove 0wsp
+sed -u -n -f <(cat <<EOF
+   0,/$T$/{p; b}
+   /^$T C/{
+      :enter; p; n; /^$T/{p; b}; b enter
+   }
+
+   /^$T A/{
+      $center_array
+      h; s/^$T A//;
+      x
+      s/\($T A\).*/\1/; t row
+      :row
+         s/⍽/ /g
+         s/\xE2\x80\x8B//g
+         p
+         n
+         /^$T/{ p; $Z; x; d}
+         G
+         /^\( *| *:\?---*:\?\)* *| *\n/{
+            s/[^\n]*\(\n[rcl]*\)\( *\)/\2\1\n/
+            s/\./-/g
+            :loop
+               s/\nl\([^\n]*\n\)|\(-*\)/| \2 \n\1/; t loop
+               s/\nr\([^\n]*\n\)|-\(-*\)/| \2: \n\1/; t loop
+               s/\nc\([^\n]*\n\)|--\(-*\)/| :\2: \n\1/; t loop
+            s/\n\n|.*/|/
+            $(FO "y/:-/──/; s/ ─/──/g; s/─ /──/g; s/─|─/─┼─/g")
+            s/|.*|/$ACOL&$AECOL/
+            $(FO "s/|\(.*\)|/├\1┤/")
+            t row
+         }
+         h
+         s/^\([^\n]*\n\)[rcl]*\([^\n]*\)$/\1\2/
+         $clear_col; $clear_osc8
+         s/[^|\n]/ /g
+         s/^\([^\n]*\n\)\([^|]*\)/\2\n\1/;t pad
+         :pad
+            s/\n\(| *\)\([^\n]*\n\)\1\( *\)/|\3\n\2/; t pad
+         s/\n\n$//
+         G
+         x; s/[^\n]*\n//; x
+         s/\n[^\n]*$//
+         s/^ */&\n/
+         :merge
+            s/\n|\( *\)\([^\n]*\n\)|\([^|\n]*\)/|\1\3\n\2/; t merge
+         s/\n\n$//
+         s/\n[^\n]*//
+         G
+         s/\(\n[rcl]*\)[^\n]*$/\1/
+         s/^\( *\)/\1\n/
+         t align
+         :align
+            # ┃ ┏━┓ ┣━┫ ┗━┛
+            s/\n|\([^|]*\)\([^\n]*\n\)r/| \1 \n\2/; t align
+            s/\n|\( *\)\([^|]*\)\([^\n]*\n\)l/| \2\1 \n\3/; t align
+            s/\n|\( *\)\1\( \?\)\([^|]*\)\([^\n]*\n\)c/| \1\3\1\2 \n\4/; t align
+         s/\n.*/|/
+         t row
+   }
+   /^$T Q/{
+      p
+      s/^$T Q//
+      h
+      :acc_q
+         n
+         /^$T/b end_q
+         $escape_q
+         H
+         b acc_q
+      :end_q
+      x
+         $quote
+         s/^\n//
+         p; $Z;
+      x
+      b end
+   }
+   $highlight
+   /^$T\[/b end
+   s/⍽/ /g
+   s/\xE2\x80\x8B//g
+   :end
+   p
+EOF
+) |
+#
+# {{{2 Part 3 -- environments processing
+# hold: temporary data
+#  - array top/bot rules, vert sep
+#  - indent environments
+#  - expand section vspaces
+#  - itemize/enumerate/task-list/definition/description layout & reattached par
+sed -u -f <(cat <<EOF
+   0,/$T$/b
+   /^$/b
+   /^${T}\#/{
+      # (sub)*section vspace
+      $(ifsmall "s/\#/\#\#/")
+                                             s/^/\n/;
+      /^\n*$T\#\{1\}\([^\#]\|$\)/{           s/^/\n\n\n\n/; s/$/\n\n\n/;   }
+      /^\n*$T\#\{2\}\([^\#]\|$\)/{           s/^/\n\n/;     s/$/\n/;       }
+      /^\n*$T\#\{3\}\([^\#]\|$\)/{           s/^/\n/;       s/$/\n/;       }
+      /^\n*$T\#\{4,$(FL 4 5)\}\([^\#]\|$\)/{                s/$/\n/;       }
+      /^\n*$T\#\{4,\}/{ s/^\n*$T/&$indent/ }
+      s/\r\r\n*$//      # if section is followed by another, no trailing space.
+      s/\n*\(.*\)\r/\1/ # if section is first non-blank, no leading space.
+      b
+   }
+
+   /^$T/{
+      /^$T Q/{
+         s/$/$(FL "$hindent│$QUOTED " ">$QUOTED ")/
+         $(if [ -z "$recurse" ] ; then FO "h; s/^$T Q//; s/│.*/$(EL ╷ ┌)$D/;p; z; x" ; fi)
+         t indent_env
+      }
+      /^$T C/{
+         $(LO "i"$'\n'"s/$/    $QUOTED/")
+         $(FO "s/$/  $DEF$GRAY│$QUOTED /; h; s/^$T C\( *\).*/\1$DEF$GRAY┌──/; p; x")
+         t indent_env
+      }
+      /^$T F/{
+         # ⎡ ⎛ ⎧ ╲ ┌
+         # ⎢ ⎜ ⎮ ╱ │
+         # ⎣ ⎝ ⎩ ╲ └
+         h
+         s/$T F\( *\)\r\?\(\([\`~]\)\3*\)\( .*\)$/\1$DEF$GRAY$(FL "$hindent┌──" "\2")\4$(FO " ──$(EL ╴ "─")")$D/;t named
+         s/$T F\( *\)\r\?\([\`~]*\)$/\1$DEF$GRAY$(FL "$hindent┌─$(EL ╴ "─")" "\2")$D/;
+         :named
+         p; x
+         s/\($T F\)\( *\)[\`~]*.*/\1\2$DEF$GRAY$(FO "$hindent│$QUOTED ")/
+         t indent_env
+      }
+      /^$T A/{
+         $(FO "n; h; y/├┼┤/┌┬┐/")
+         :array
+            n
+            /^$T/{ $(FL "g; y/├┼┤/└┴┘/; b" "d") }
+            $(FL "s/|/$ACOL│$AECOL/g" "/ *$ACOL/!{ s/|/$ACOL|$AECOL/g; }")
+            b array
+      }
+      /^$T:/{
+         N
+         s/.*\n\( *\)/\1$(FL "→" "$BOLD:$UBOLD") /
+         t final
+      }
+      s/^$T\.//; t list
+      b
+   }
+
+   :final
+      $(FL "s/<br>$//" "s/<br>$/$GRAY&/")
+      s/\( *\)\r/\1/
+      s/.*/$DEF&$D/
+      b
+
+   :desc
+      h
+      s/\n.*//
+      #s/\(\n.*\),$BOLD:$E(,$UBOLD:$E),/\1,$UBOLD:$E(,$BOLD:$E),/
+      s/$BOLD/$T/g
+      s/$UBOLD/$BOLD/g
+      s/$T/$UBOLD/g
+      s/$UFAINT/$UFAINT$BOLD/g
+      s/$UIT/$UIT$BOLD/g
+      s/$LNC/&$BOLD/g
+      G
+      s/\([^\n]*\)\n[^\n]*\n\([^\n]*\)\n\([^\n]*\)/\2$BOLD\[\1\]$UBOLD\3/
+      t $(FL "endlst" "bullet")
+   :list
+      N; s/\n *//; t list_nxt
+      :list_nxt
+      /^ *[1-9][0-9]*\. /b endlst
+      /^ *[-+*] \[[Xx ]\]\( \|$\)/{
+         $(FO "s/^\( *\) [-+*] \(\[[ xX]\] \)!/\1\2/; s/^\( *\)\[[Xx]\]/\1\[✓\]/; t endlst")
+      }
+      s/^\( *$(FL "" "[-+*] ")\)\[\($(LO " \?") *\) *\([^] ]\(\($E]\|[^]]\|\](\)*[^] ]\)\?$(LO " \?")\) *\]\( \|$\) */\2\3\n\1\n\6/;t desc
+   :bullet
+      s/^\(^$indent \{2\}\)\([-+*] \)/\1$(FL "$DEF• " "* $DEF")/;t final
+      s/^\(^$indent \{6\}\)[-+*] /\1$DEF$(EL "‒" "$BOLD-$UBOLD") /;t final
+      s/^\(^$indent \{10\}\)[-+*] /\1$FAINT$(FL "•" "*")$UFAINT$DEF /;t final
+      s/^\(^$indent \{14,\}\)[-+*] /\1$FAINT$(FL "‒" "-")$UFAINT$DEF /;t final
+
+   :endlst
+      s/^\($indent \{1\}\)\($(LO "[-+*] ")\[.\]\|[1-9][0-9]*\.\) /\1$DEF$BOLD\2$UBOLD /;t final
+      s/^\($indent \{5\}\)\($(LO "[-+*] ")\[.\]\|[1-9][0-9]*\.\) /\1$DEF$IT\2$UIT /;t final
+      s/^\($indent \{9,\}\)\($(LO "[-+*] ")\[.\]\|[1-9][0-9]*\.\) /\1$FAINT\2$UFAINT$DEF /;t final
+      b final
+
+   :indent_env
+      s/$T [QCF]//; h
+      :indent_row
+         N
+         /\n$T/{
+            $(LO "s/\n$T\( *\)\([^ ].*\)/\1$GRAY\2$D/;t")
+            $(FO "/!$/{ s/│.*$/$(EL ╵ └)$D/; P}")
+            d
+         }
+         s/\n//
+         s/\(\($E\[[^m]*m\)\| \)*$/$D/
+         p; g
+         t indent_row
+      /^$T$/d
+EOF
+) |
+#
+# {{{2 Epilogue -- rule expansion, (sub)*section coloring
+# hold: horizontal rule
+sed -u -f <(cat <<EOF
+   1{
+      # 3^4 = 81
+      x; s/.*/$(FL "───" "---")/g
+      :expand; s/.*/&&&/; /.\{$SMD_W\}/!b expand
+      s/\(.\{$SMD_W\}\).*/\1/; x; t init; :init
+   }
+   $(FO "0,/$T$/{/$T$/!b; /^$T/!{s/$T/\n$T/; P; s/^[^\n]*//; P; s/\n//}; N;  s/$T\n/$(
+      if [ -z "$recurse" ] ; then echo -E -n "\xE2\x80\x8B" ; fi
+   )/;t res; :res}")
+   $(LO "0,/$T$/{/^$T$/d; s/$T//; t}")
+   /^$/b
+   /^$T A/d
+   s/^$T\[//;t end
+   /^$T-/{
+      g
+      s/\(.*\)\1\1$/\1/
+      $true_line
+      s/.*/$indent$DEF$GRAY&$D/
+      b end
+   }
+   /^$T\*/{$star_rule}
+   /^$T *\#/{
+      s/ *$//
+      $(if [ -n "$toc" ] || { [ -z "$lint_mode" ] && [ -z "$recurse" ] ; }; then echo -n "p"; fi)
+      s/\($T *\#* [1-9][0-9]*\)\( -\|\(\(\.[1-9][0-9]*\)\+\)\)  */\1$(FL "\3" "\2")$(EL " ╴" " ")$(FL "$sech" " ")/ #─╶
+      s/$/\n,$BOLD:$E(,$UBOLD:$E),$IT:$E<,$UIT:$E>,$FAINT:$E{,$UFAINT:$E},/
+      t protect
+      :protect; s/\(^[^\n]*\)\($E\[[^m]*m\)\(.*\n.*,\2:\([^,]*\)\)/\1\4\3/; t protect
+
+      # Fake layout for the process at end_sec
+      s/^$T\( *\# \)/$D$sech$SEC_MAJ\1/;t end_sec
+      s/^$T\( *\#\# \)/$D$sech$SSEC_MAJ\1/;t end_sec
+      # True layouts
+      s/^$T\( *\)\(\#\#\#\) \([^\n]*\)/\1$SSSEC_MIN$(FL █ "\2")$D$sech$SSSEC_MAJ\3/;t end_sec
+      s/^$T\( *\)\(\#\#\#\#\) \([^\n]*\)/\1$SSSSEC_MIN$(FL ▒ "\2")$D$sech$SSSSEC_MAJ\3/;t end_sec
+      s/^$T\( *\)\(\#\#\#\#\#\) \([^\n]*\)/\1$SSSSSEC_MIN$(FL ░ "\2")$D$sech$SSSSSEC_MAJ\3/;t end_sec
+      s/^$T\( *\)\(\#\#\#\#\#\#\) \([^\n]*\)/\1$SSSSSEC_MIN$(FL "  ░" "\2")$D$sech$SSSSSEC_MAJ\3/;t end_sec
+
+      :end_sec
+         s/^\(.*$D$sech\)\($E\[[^m]*m\)\(.*\)$DEF/\1\2\3\2/;t end_sec
+      /${E}[()<>{}]/{
+         /^\(.*$D$sech\)\($E\[\([^m]*;\)*2\(;[^m]*\)*m\)/{
+            s/\(\n.*\)$UBOLD:$E),/\1,$UBOLD$FAINT:$E),/
+            # remove FAINT/UFAINT in a FAINT context
+            s/\(\n.*\),$FAINT:$E{,$UFAINT:$E},/\1,:$E{,:$E},/
+         }
+         /^\(.*$D$sech\)\($E\[\([^m]*;\)*1\(;[^m]*\)*m\)/{
+            s/\(\n.*\),$BOLD:$E(,$UBOLD:$E),/\1,$UBOLD:$E(,$BOLD:$E),/
+            s/\(\n.*\),$UFAINT:$E},/\1,$UFAINT$BOLD:$E},/
+         }
+         /^\(.*$D$sech\)\\($E\[\([^m]*;\)*3\(;[^m]*\)*m\)/{
+            s/\(\n.*\),$IT:$E<,$UIT:$E>,/\1,$UIT:$E<,$IT:$E>,/
+         }
+         t unprotect
+         :unprotect; s/\(^[^\n]*\)\(${E}[()<>{}]\)\(.*\n.*,\([^,]*\):\2\)/\1\4\3/; t unprotect
+      }
+      s/\n.*/$D/
+      t unprotected;:unprotected
+      s/^$D$sech$SEC_MAJ *\# //;t sec
+      s/^$D$sech$SSEC_MAJ *\#\# //;t subsec
+      $(ifsmall ":end_ssec;s/\#\#/\#/")
+   }
+   :end
+   $(FO "s/^/$bonus_sp/" )
+   b
+EOF
+if [ "$lint_mode" = "-a" ] ; then
+   echo ":subsec; s/^/$SSEC_MIN##$sech$D$SSEC_MAJ/; b end$(ifsmall "_ssec")"
+   echo ":sec; s/^/$SEC_MIN#$D$sech$D$SEC_MAJ/; b end$(ifsmall "_ssec")"
+else cat << EOF
+   :subsec
+      # wide chars. Not so great.
+      #$(EL "s/[a-z] /& /g" "")
+      #$(EL "y/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ/" "")
+
+      $(FO "i \\$bonus_sp$SSEC_MIN$(EL "▄" " ")$D")
+      s/\(.*\)$D/$(FL "$bonus_sp$(EL "$SSEC_MIN█$D" "$SSEC_MAJ▒")$sech$SSEC_MAJ" "$SSEC_MAJ")\1$D\n\1/;P
+      s/^[^\n]*\n/$(FO "$bonus_sp")/
+      #$(EL "s/[^ ]/&&/g") # wide chars are.. wide.
+      $clear_col; $clear_osc8
+      s/^$bonus_sp/ /
+      s/./$(FL "─" "-")/g
+      $(LO "$(ifsmall "s/-/=/g")")
+      s/.*/$(EL "$SSEC_MIN" "$SSEC_MAJ")$(FO "$(EL "▀" "─")─")&$D/
+      b end
+
+   :sec
+      $(LO "s/\(.*\)/$SEC_MAJ&$D/; p; g; s/./=/g; s/\(.*\)/$SEC_MIN\1$D/;b end")
+      # from now on, Final only mode
+      s/.*/  &  /
+      H; G; s/\n[^\n]*$//
+      $clear_col; $clear_osc8
+      s/\(.\{$SMD_W\}.\).*/\1/
+      s/^[^\n]*\n//
+      G
+      s/^\([^\n]*\n\)[^\n]*\n\([^\n]*\)/\1\2/
+      s/^\(.*\)\(\1.\?\)\n  \(.*\)$/$SEC_MIN\1$D $sech$SEC_MAJ\3$D$SEC_MIN\2$D/
+      x; s/\n.*//; x# restore the hold buffer as it was
+      b end
+EOF
+fi) |
+#
+# {{{1 In the end.
+# hold: counter helper + temporary data
+#
+if [ -n "$recurse" ] ; then
+   cat
+else
+   if [ -n "$toc" ] || { [ -z "$lint_mode" ] && [ -z "$recurse" ] ; } ; then
+      # hold: toc
+      sed -u -f <(cat<<EOF
+      1{ x; s/.*/1\n0123456789/; x }
+
+      /^$T/{
+         s/^ *$T *\#\(\#*\) *\(\([1-9][0-9]*\) -\)\?/\1\3/; t again
+         :again; s/^\(\#*\)\#\([^#]\)/\1   \2/; t again
+         s/$E\[\([^m1239]\|2[^239m]\|3[^m]\)[^m]*m//g
+         G
+         s/\n[^\n\]*$//; s/ *\n */ /
+         s/^/$T/
+         t
+      }
+      $(if [ -z "$toc" ] ; then echo -n "P"; fi)
+      x
+         s/^\([^\n]*[0-8]\)\?\(9*\)\n/\1\n\2\n/
+         h
+         s/^[^\n]*\n\([^\n]*\)\n.*$/\1/
+         s/9/0/g; H; z; x
+         s/^\([^\n]*\)\n9*\(\n[^\n]*\)\n\(\(0*\)\)/\1|\3\2/
+         s/\([0-8]\)|\([^\n]*\n[^\n]*\1\(.\)\)/\3\2/
+         s/^|/1/
+      x
+      d
+EOF
+      ) |
+      # hold: rule
+      sed -u -f <(cat <<EOF
+      1{
+         x; s/.*/---/; :r; s/.*/&&&/
+         /.\{$SMD_W\}/!b r
+         s/\(.\{$SMD_W\}\).*/\1/;
+         $(if [ -z "$toc" ] ; then
+            FO "s/-/─/g; s/^/$T $DEF$FAINT/; s/$/$D/; p; s/^$T $DEF$FAINT//; s/$D$//;"
+         fi)
+         s/../-./g
+         x;
+         t init;:init
+      }
+      s/^$T//; t retry
+      b
+
+      :retry
+      G; h
+      $clear_col; $clear_osc8
+      # Ignore 3 first blanks if present, as they will be removed at POINT2.
+      s/^\(\(   \)\?\(.\{$(( SMD_W - 2 ))\}\)\).*$/\1/
+      /\n/!{   # overfull line, try again after removing the last word
+         g; s/[^\n]*\n//; x
+         s/\n.*//
+         s/ *[^ ][^ ]*\( \[\.\.\]\)\?\( [0-9]\{1,\}\)$/ [..]\2/;
+         x; b retry
+      }
+      s/^\( *\)[^\n]*\n/\1|/
+      s/   / /g
+      /^|/{       s/[.-]/ /g; t done }
+      /^  \?|/{   s/-/./g;    t done }
+      /^   |/{
+          /\.$/{ s/-/ /g }
+         /-$/{ s/\./ /g; s/-/./g }
+         t done
+      }
+      s/[.-]/ /g
+      :done
+      H; g
+      # invisible ref line
+      $(if [ -z "$lint_mode" ] && [ -z "$toc" ] ; then
+         lab=(
+            "$clear_col; $clear_osc8;"
+            "s/ \+[0-9]\+\n.*//"
+            "s/./\l&/g; s/[^a-z0-9]\+/-/g"
+            "s/-\?$//; s/^-\?\(.*\)/$(conceal "\#\1")/"
+            "p; g"
+         )
+         IFS=$'\n'; echo -E "${lab[*]}"
+      fi)
+      s/^[^\n]*\n//
+      s/\n.*//
+      x
+      s/^   // # POINT2
+      s/^\([^\n]* \)\([0-9]\{1,\}\)\n[^\n]*\n\( *|\)\(.*\)/\3\1\n\4\n \2/
+      /^|/{
+         s/\n\([^\n]*\)\n/\1/
+         s/|/\n$T$BOLD|/
+         b end
+      }
+      /^    *|/{
+         /^     *|/{ s/|/$IT|/ }
+         s/\n\([^\n]*\)\n/\1/
+         s/|/$DEF$FAINT|/
+         b end
+      }
+      s/\n\([^\n]*\)\n/$FAINT\1$UFAINT/
+      /^ |/{   s/|/$T|/     }
+      /^  |/{  s/|/$DEF|/   }
+      :end
+      s/^ *\([^|]*\)|/\1  /
+      /[^ ]*$T/{
+         s/$DEF/$E\[m/g
+         s/$FAINT/$E\[2m/g
+         s/$UFAINT/$E\[22m/g
+      }
+      /^[^ ]*$FAINT/{
+         s/$UFAINT//g
+         s/$DEF/$DEF$FAINT/g
+         s/$UBOLD/$UBOLD$FAINT/g
+         s/^[^ ]*/&$FAINT/
+      }
+      /^[^ ]*$BOLD/{
+         s/$BOLD/$E,/g; s/$UBOLD/$BOLD/g; s/$E,/$BOLD/g
+         s/$UBOLD/$BOLD/
+      }
+      /^[^ ]*$IT/{
+         s/$IT/$E,/g;   s/$UIT/$IT/g;     s/$E,/$UIT/g
+         s/$UIT/$IT/
+      }
+      s/$/$T/
+      $(if [ -z "$toc" ] ; then echo "s/^/$T/"; fi)
+EOF
+      ) | if [ -n "$toc" ] ; then cat; else #mergeable with previous
+         sed -u -e "\${p; x; s/^\n//; /\n/!d; x; /./{z; p; p}; p; x; s/\([^\n]*\n\)\n*/\1/; p; P; d}" \
+                -e "$(if [ -z "$lint_mode" ] ; then # remove a blank line before a ref line
+                      echo -E -n "/^$/{ N; /^\n$(conceal '.*')$/!{P; D}}; s/^\n//; t lab;:lab"
+                   fi )"\
+                -e "{s/^$T//; T; H; d}"
+       fi
+   else
+      cat
+   fi |
+   if [ -n "$twocol" ] ; then
+      sed -u -f <(cat <<EOF
+         1,$((screenlines - 2)){
+            \${x;b}
+            s/$/\r/; H; d
+         }
+         H; G
+         #┊┆╎╵╷│
+         s/^\([^\n]*\)\r\?\n\([^\n]*\).*/\2$E\[$(( screenwidth + 3 + line_numbers ))G$DEF$GRAY|$E\[m\1/
+         p
+         x
+         s/^[^\n]*\n//
+         x
+         \${
+            x
+            1,$(( (screenlines - 2) * 2 )){
+               s/\r[^\r]*$//
+               s/\r\n/\n/g
+            }
+            b
+         }
+         d
+EOF
+   )
+   else
+      cat
+   fi |
+   if [ -n "$in_place_mode" ] ; then
+      cat > "$tmp_file" && mv "$tmp_file" "$1"
+   else
+      if [ -n "$scroll" ] ; then
+         echo -e ".search\n\"\xE2\x80\x8B" >> ~/.lesshst
+      fi
+      "${output[@]}"
+   fi
+fi
+
+shift
+if [ -n "$*" ] ; then
+   export BGC
+   $0 "${opts[@]}" "$@"
+fi
+
+# {{{1 Licence
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; version 3 or later of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, see
+# https://www.gnu.org/licenses/licenses/gpl-3.0.en.html.
+#
+# Copyleft (C) 2025  Johann Brault-Baron <johann.brault_baron@yahoo.com>
+#
