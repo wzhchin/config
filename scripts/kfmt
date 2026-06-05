@@ -2,10 +2,13 @@
 
 set -euo pipefail
 
-msg()  { printf "\033[32m==> %s %s ~ \033[0m%s\n" "$(date +%H:%M:%S)" "$*" ; }
-warn() { printf "\033[33m==> %s %s ~ %s\033[0m\n" "$(date +%H:%M:%S)" "$*" ; }
-error(){ printf "\033[31m==> %s %s ~ %s\033[0m\n" "$(date +%H:%M:%S)" "$*" ; }
-die()  { error "$@"; exit 1; }
+msg() { printf "\033[32m==> %s %s ~ \033[0m%s\n" "$(date +%H:%M:%S)" "$*"; }
+warn() { printf "\033[33m==> %s %s ~ %s\033[0m\n" "$(date +%H:%M:%S)" "$*"; }
+error() { printf "\033[31m==> %s %s ~ %s\033[0m\n" "$(date +%H:%M:%S)" "$*"; }
+die() {
+    error "$@"
+    exit 1
+}
 
 declare -a DSTS=()
 WRITE_FLAG=false
@@ -15,48 +18,53 @@ _kfmt_path_ext() {
     local fp="$1" ext="${2:-}"
 
     case "$ext" in
-        sh)
-            $WRITE_FLAG && { shfmt -w -i 4 "$fp"; } || { shfmt -i 4 "$fp"; }
-            ;;
-        py)
-            $WRITE_FLAG && { ruff format --no-cache "$fp"; } || { ruff format --preview --no-cache "$fp"; }
-            ;;
-        json)
-            $WRITE_FLAG && { yq -P -o json -i "$fp"; } || { yq -P -o json "$fp"; }
-            ;;
-        toml)
-            $WRITE_FLAG && { topiary format "$fp"; } || { topiary format --language toml < "$fp"; }
-            ;;
-        xml)
-            $WRITE_FLAG && { yq -P -o xml -i "$fp"; } || { yq -P -o xml "$fp"; }
-            ;;
-        *)
-            warn "unsupported file type: $ext"
-            ;;
+    sh)
+        $WRITE_FLAG && { shfmt -w -i 4 "$fp"; } || { shfmt -i 4 "$fp"; }
+        ;;
+    py)
+        $WRITE_FLAG && { ruff format --no-cache "$fp"; } || { ruff format --preview --no-cache "$fp"; }
+        ;;
+    json)
+        $WRITE_FLAG && { yq -P -o json -i "$fp"; } || { yq -P -o json "$fp"; }
+        ;;
+    toml)
+        $WRITE_FLAG && { topiary format "$fp"; } || { topiary format --language toml <"$fp"; }
+        ;;
+    xml)
+        $WRITE_FLAG && { yq -P -o xml -i "$fp"; } || { yq -P -o xml "$fp"; }
+        ;;
+    lua)
+        # cargo install stylua
+        $WRITE_FLAG \
+          && { stylua --indent-type Spaces --indent-width 2 "$fp"; } \
+          || { cat "$fp" | stylua --indent-type Spaces --indent-width 2 --stdin-filepath - -; }
+        ;;
+    *)
+        warn "unsupported file type: $ext"
+        ;;
     esac
 }
 
 _format_file() {
-    set -x
     local mime
     local fp="$1"
     local ext
 
     if [[ "$fp" == *.* ]]; then
-        ext="${fp##*.}" 
-        _kfmt_path_ext "$fp" "$ext" 
+        ext="${fp##*.}"
+        _kfmt_path_ext "$fp" "$ext"
     else
         mime="$(file --mime "$fp")"
         case "$mime" in
-            *text/x-shellscript*)
-                _kfmt_path_ext "$fp" "sh"
-                ;;
-            *text/x-script.python*)
-                _kfmt_path_ext "$fp" "py"
-                ;;
-            *)
-                warn "cannot detect file type: $fp"
-                ;;
+        *text/x-shellscript*)
+            _kfmt_path_ext "$fp" "sh"
+            ;;
+        *text/x-script.python*)
+            _kfmt_path_ext "$fp" "py"
+            ;;
+        *)
+            warn "cannot detect file type: $fp"
+            ;;
         esac
     fi
 }
@@ -74,19 +82,25 @@ EOF
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -i|-w) WRITE_FLAG=true ;;
-        -t)
-            [[ -n $FILE_TYPE ]] && die "'-t' can only be used once."
-            shift
-            FILE_TYPE="$1"
-            ;;
-        -h|--help) _show_help; exit 0 ;;
-        *) DSTS=("${DSTS[@]}" "$1") ;;
+    -i | -w) WRITE_FLAG=true ;;
+    -t)
+        [[ -n $FILE_TYPE ]] && die "'-t' can only be used once."
+        shift
+        FILE_TYPE="$1"
+        ;;
+    -h | --help)
+        _show_help
+        exit 0
+        ;;
+    *) DSTS=("${DSTS[@]}" "$1") ;;
     esac
     shift
 done
 
-[[ ${#DSTS[@]} -eq 0 ]] && { _show_help; exit 1; }
+[[ ${#DSTS[@]} -eq 0 ]] && {
+    _show_help
+    exit 1
+}
 
 for dst in "${DSTS[@]}"; do
     if [[ -n $FILE_TYPE ]]; then
