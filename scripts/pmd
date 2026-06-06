@@ -1712,25 +1712,165 @@ class Renderer:
     def _build_row_grid(self, cells: list, col_widths: list[int],
                         align_list: list[Align]) -> list[list[str]]:
         """Build a grid of aligned cell strings for a row.
-        smd does NOT wrap cells — each cell is a single line."""
+        Cells that exceed column width are wrapped; CJK text breaks
+        at any character, non-CJK uses word-wrap."""
         n_cols = len(col_widths)
         # Ensure enough cells
         while len(cells) < n_cols:
             cells.append([Text('')])
 
-        # Render each cell inline, no wrapping
-        row = []
+        # Wrap each cell into multiple lines, then find max lines
+        wrapped_cells = []
         for ci in range(n_cols):
             cell_nodes = cells[ci] if ci < len(cells) else [Text('')]
             colored = self.render_inline(cell_nodes)
-            plain = strip_ansi(colored)
             w = col_widths[ci]
             a = align_list[ci] if ci < len(align_list) else Align.LEFT
-            row.append(self._align_cell(plain, w, a))
-        return [row]
+            lines = self._wrap_cell(colored, w)
+            wrapped_cells.append((lines, w, a))
 
-    def _align_cell(self, text: str, width: int, alignment: Align) -> str:
-        """Align and pad cell text to exactly *width* display columns."""
+        max_lines = max((len(wc[0]) for wc in wrapped_cells), default=1)
+
+        # Build grid rows, aligning each line within its cell
+        grid = []
+        for li in range(max_lines):
+            row = []
+            for ci in range(n_cols):
+                lines, w, a = wrapped_cells[ci]
+                if li < len(lines):
+                    align = a if li == 0 else Align.LEFT
+                    row.append(self._align_cell_colored(lines[li], w, align))
+                else:
+                    row.append(' ' * w)
+            grid.append(row)
+        return grid
+
+    def _wrap_cell(self, text: str, width: int) -> list[str]:
+        """Wrap *text* (may contain ANSI codes) to *width* display columns.
+        CJK characters may break at any position; non-CJK uses word-wrap."""
+        if width <= 0:
+            return [text]
+        if display_width(text) <= width:
+            return [text]
+
+        # First, split text into "segments": each segment is either a
+        # space, a non-CJK word, or a single CJK/wide char.
+        # A segment carries its colored representation and display width.
+        segments = []
+        chars = self._colored_chars(text)
+        word_buf = []  # accumulate non-CJK, non-space chars
+
+        def flush_word():
+            if not word_buf:
+                return
+            colored = ''.join(c for _, c, _ in word_buf)
+            dw = sum(w for _, _, w in word_buf)
+            segments.append(('w', colored, dw))
+            word_buf.clear()
+
+        for ch, colored, cw in chars:
+            is_cjk = cw >= 2 or WIDE_CHARS_RE.match(ch)
+            if ch == ' ':
+                flush_word()
+                segments.append(('s', ' ', 1))
+            elif is_cjk:
+                flush_word()
+                segments.append(('c', colored, cw))
+            else:
+                word_buf.append((ch, colored, cw))
+        flush_word()
+
+        # Now lay out segments into lines
+        lines = []
+        line = []
+        line_w = 0
+
+        for seg_type, seg_colored, seg_dw in segments:
+            if seg_type == 's':
+                # Space: only add if there's content before it on this line
+                if line and line_w + seg_dw <= width:
+                    line.append(seg_colored)
+                    line_w += seg_dw
+                # else: skip space (line start or overflow)
+            elif seg_type == 'c':
+                # CJK: can break before it
+                if line_w + seg_dw > width and line:
+                    lines.append(''.join(line))
+                    line = []
+                    line_w = 0
+                if line_w + seg_dw <= width:
+                    line.append(seg_colored)
+                    line_w += seg_dw
+                else:
+                    # Single CJK char exceeds width — add anyway
+                    line.append(seg_colored)
+                    line_w += seg_dw
+            elif seg_type == 'w':
+                # Non-CJK word
+                if line_w + seg_dw <= width:
+                    line.append(seg_colored)
+                    line_w += seg_dw
+                else:
+                    # Word doesn't fit
+                    if line:
+                        lines.append(''.join(line))
+                        line = []
+                        line_w = 0
+                    # Check if word itself exceeds width — force-break
+                    if seg_dw <= width:
+                        line.append(seg_colored)
+                        line_w += seg_dw
+                    else:
+                        # Force-break the word character by character
+                        for ch, ch_colored, ch_w in self._colored_chars(seg_colored):
+                            if line_w + ch_w > width and line:
+                                lines.append(''.join(line))
+                                line = []
+                                line_w = 0
+                            line.append(ch_colored)
+                            line_w += ch_w
+
+        if line:
+            lines.append(''.join(line))
+
+        return lines if lines else ['']
+
+    def _colored_chars(self, text: str) -> list[tuple[str, str, int]]:
+        """Split *text* into a list of (plain_char, colored_char, display_width).
+        ANSI escape sequences are attached to the next visible character."""
+        result = []
+        pending_ansi = ''
+        i = 0
+        while i < len(text):
+            if text[i] == ESC and i + 1 < len(text) and text[i+1] == '[':
+                # CSI sequence
+                m = ESC_RE.match(text, i)
+                if m:
+                    pending_ansi += text[i:m.end()]
+                    i = m.end()
+                    continue
+            if text[i] == ESC and i + 1 < len(text) and text[i+1] == ']':
+                # OSC8 sequence
+                m = OSC8_RE.match(text, i)
+                if m:
+                    pending_ansi += text[i:m.end()]
+                    i = m.end()
+                    continue
+            ch = text[i]
+            colored = pending_ansi + ch
+            pending_ansi = ''
+            if WIDE_CHARS_RE.match(ch):
+                dw = 2
+            elif ch == '​':
+                dw = 0
+            else:
+                dw = 1
+            result.append((ch, colored, dw))
+            i += 1
+        return result
+
+    def _align_cell_colored(self, text: str, width: int, alignment: Align) -> str:
+        """Align and pad *text* (may contain ANSI) to exactly *width* display columns."""
         dw = display_width(text)
         if dw >= width:
             return text
