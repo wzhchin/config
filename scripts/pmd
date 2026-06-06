@@ -1,0 +1,2091 @@
+#!/usr/bin/env python3
+
+# pmd — Python Markdown renderer for the terminal
+# Faithful rewrite of smd (sed markdown renderer) with table cell wrapping.
+#
+# This program is free software (licenced under the GNU General Public Licence),
+# see copyright licence details at the end of file.
+
+VER_STRING = "0.1.0"
+
+import sys
+import os
+import re
+import shutil
+import subprocess
+import textwrap
+from dataclasses import dataclass, field
+from typing import Optional
+from enum import Enum, auto
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ANSI helpers
+# ═══════════════════════════════════════════════════════════════════════════════
+
+ESC = '\033'
+ESC_RE = re.compile(r'\033\[[^a-zA-Z]*[a-zA-Z]')
+OSC8_RE = re.compile(r'\033\]8;;.*?\033\\')
+
+
+def esc(code: str) -> str:
+    """Build an ANSI escape sequence: esc('[1m') → '\\033[1m'"""
+    return f'{ESC}{code}'
+
+
+def sgr(*params: int) -> str:
+    """Build SGR sequence: sgr(1, 33) → '\\033[1;33m'"""
+    return esc(f'[{";".join(str(p) for p in params)}m')
+
+
+RESET = sgr(0)
+BOLD = sgr(1)
+UBOLD = sgr(22)
+ITALIC = sgr(3)
+UITALIC = sgr(23)
+STRIKE = sgr(9)
+USTRIKE = sgr(29)
+FAINT = sgr(2)
+UFAINT = sgr(22)
+CONCEAL = sgr(8)
+UNCONCEAL = sgr(28)
+
+WIDE_CHARS_RE = re.compile(
+    r'[㐀-䶿一-鿿ㄅ-ㄭァ-ヿ'
+    r'가-힣　-〿⼀-⿟！-￮'
+    r'豈-刺​]'
+)
+
+
+def display_width(s: str) -> int:
+    """Return the visual width of a string, ignoring ANSI escapes and counting
+    East-Asian wide chars as 2."""
+    s = ESC_RE.sub('', s)
+    s = OSC8_RE.sub('', s)
+    w = 0
+    for ch in s:
+        if WIDE_CHARS_RE.match(ch):
+            w += 2
+        elif ch == '​':
+            pass  # zero-width space
+        else:
+            w += 1
+    return w
+
+
+def strip_ansi(s: str) -> str:
+    """Remove ANSI escape sequences and OSC8 links."""
+    s = ESC_RE.sub('', s)
+    s = OSC8_RE.sub('', s)
+    return s
+
+
+def pad_to(s: str, width: int) -> str:
+    """Pad string *s* with trailing spaces so its display width equals *width*."""
+    dw = display_width(s)
+    if dw >= width:
+        return s
+    return s + ' ' * (width - dw)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Theme / colours
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class Theme:
+    dark: bool = True
+    bgc: int = 0
+
+    # Section colours (major, minor per level)
+    SEC_MAJ: str = ''
+    SEC_MIN: str = ''
+    SSEC_MAJ: str = ''
+    SSEC_MIN: str = ''
+    SSSEC_MAJ: str = ''
+    SSSEC_MIN: str = ''
+    SSSSEC_MAJ: str = ''
+    SSSSEC_MIN: str = ''
+    SSSSSEC_MAJ: str = ''
+    SSSSSEC_MIN: str = ''
+
+    # Link / reference colours
+    ACOL: str = ''
+    AECOL: str = ''
+    LNCOL: str = ''
+    LNDST: str = ''
+    PCOL: str = ''
+    PCOLD: str = ''
+    REFCOL: str = ''
+
+    # Semantic colours
+    QUOTED: str = ''
+    GRAY: str = ''
+    DEF: str = ''
+
+    # Admonition colours
+    NOTE_C: str = ''
+    TIP_C: str = ''
+    IMP_C: str = ''
+    WRN_C: str = ''
+    CAUTION_C: str = ''
+
+    def init(self, env: dict):
+        """Resolve colours from env or defaults."""
+        e = lambda key, default: sgr(int(os.environ.get(key, default).rstrip('m').split(';')[-1]) if os.environ.get(key, default).lstrip('\033[').rstrip('m').isdigit() else eval(f'esc("{os.environ.get(key, default)}")')) if False else self._col(env, key, default)
+
+    def _col(self, env: dict, key: str, default: str) -> str:
+        val = env.get(key)
+        if val:
+            # val is like "33;1" — build SGR
+            return sgr(*[int(x) for x in val.split(';')])
+        return sgr(*[int(x) for x in default.split(';')])
+
+    def configure(self, dark: bool):
+        self.dark = dark
+        e = os.environ
+        if dark:
+            self.bgc = 0
+            self.DEF = sgr(37)
+            self.SEC_MAJ = self._col(e, 'SMD_SEC_MAJ', '33;1')
+            self.SEC_MIN = self._col(e, 'SMD_SEC_MIN', '33;2')
+            self.SSEC_MAJ = self._col(e, 'SMD_SSEC_MAJ', '36;1')
+            self.SSEC_MIN = self._col(e, 'SMD_SSEC_MIN', '36;2')
+            self.SSSEC_MAJ = self._col(e, 'SMD_SSSEC_MAJ', '34;1')
+            self.SSSEC_MIN = self._col(e, 'SMD_SSSEC_MIN', '34')
+            self.SSSSEC_MAJ = self._col(e, 'SMD_SSSSEC_MAJ', '36;3')
+            self.SSSSEC_MIN = self._col(e, 'SMD_SSSSEC_MIN', '36;3')
+            self.SSSSSEC_MAJ = self._col(e, 'SMD_SSSSSEC_MAJ', '34;3;2')
+            self.SSSSSEC_MIN = self._col(e, 'SMD_SSSSSEC_MIN', '34;3')
+            self.ACOL = self._col(e, 'SMD_ACOL', '34;2')
+            self.AECOL = self._col(e, 'SMD_AECOL', '37;22')
+            lncol = e.get('SMD_LNCOL', '32;22')
+            lndst = e.get('SMD_LNDST', '32;2')
+            self.LNCOL = sgr(*[int(x) for x in lncol.split(';')])
+            self.LNDST = sgr(*[int(x) for x in lndst.split(';')])
+            self.PCOL = self._col(e, 'SMD_PCOL', '35;22')
+            self.PCOLD = self._col(e, 'SMD_PCOLD', '35;2')
+            self.QUOTED = sgr(37, 22)
+            self.GRAY = sgr(2)
+            self.FAINT = FAINT
+            self.UFAINT = UFAINT
+        else:
+            self.bgc = 7
+            self.DEF = sgr(30)
+            self.SEC_MAJ = self._col(e, 'SMD_SEC_MAJ', '33;2')
+            self.SEC_MIN = self._col(e, 'SMD_SEC_MIN', '33')
+            self.SSEC_MAJ = self._col(e, 'SMD_SSEC_MAJ', '36;1;2')
+            self.SSEC_MIN = self._col(e, 'SMD_SSEC_MIN', '36;1;2')
+            self.SSSEC_MAJ = self._col(e, 'SMD_SSSEC_MAJ', '34;3;2')
+            self.SSSEC_MIN = self._col(e, 'SMD_SSSEC_MIN', '34;3')
+            self.SSSSEC_MAJ = self._col(e, 'SMD_SSSSEC_MAJ', '34;3;2')
+            self.SSSSEC_MIN = self._col(e, 'SMD_SSSSEC_MIN', '34;3')
+            self.SSSSSEC_MAJ = self._col(e, 'SMD_SSSSSEC_MAJ', '34;3')
+            self.SSSSSEC_MIN = self._col(e, 'SMD_SSSSSEC_MIN', '34;3')
+            self.ACOL = self._col(e, 'SMD_ACOL', '34;2')
+            self.AECOL = self._col(e, 'SMD_AECOL', '30;22')
+            lncol = e.get('SMD_LNCOL', '32;2')
+            lndst = e.get('SMD_LNDST', '32;22')
+            self.LNCOL = sgr(*[int(x) for x in lncol.split(';')])
+            self.LNDST = sgr(*[int(x) for x in lndst.split(';')])
+            self.PCOL = self._col(e, 'SMD_PCOL', '35;2')
+            self.PCOLD = self._col(e, 'SMD_PCOLD', '35;22')
+            self.QUOTED = sgr(37, 22, 2)
+            self.GRAY = sgr(37, 2)
+            self.FAINT = sgr(37, 2)
+            self.UFAINT = sgr(30, 22)
+
+        self.REFCOL = self._col(e, 'SMD_REFCOL', '34')
+        self.NOTE_C = sgr(34)
+        self.TIP_C = sgr(32)
+        self.IMP_C = sgr(35)
+        self.WRN_C = sgr(33)
+        self.CAUTION_C = sgr(31)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class Config:
+    theme: Theme = field(default_factory=Theme)
+    width: int = 75
+    no_just: bool = False
+    no_par_merge: int = 0   # 0=merge all, 1=never, 2=not-after-punctuation
+    no_rec: bool = False
+    no_abs: bool = False
+    small: bool = False
+    hshift: int = 0
+    no_lev1: bool = False
+    show_names: bool = False
+    lint_mode: Optional[str] = None  # '-l', '-a', '-f'
+    in_place: bool = False
+    uncolored: bool = False
+    konsole: bool = False
+    debug: bool = False
+    files: list = field(default_factory=list)
+    lang_aliases: dict = field(default_factory=dict)
+    flush_foot: int = 3
+    bat_cmd: Optional[str] = None
+    indent: str = '   '  # smd uses 3-space indent for paragraphs
+    hindent: str = ' '
+    bonus_sp: str = ' '
+    sech: str = ''  # concealed '#' or ' '
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CLI argument parsing
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def parse_args(argv: list[str]) -> Config:
+    cfg = Config()
+    args = argv[1:]
+    lang_alias_str = os.environ.get('SMD_LANG_ALIASES', 'shell:bash')
+    lang_alias_str = lang_alias_str.replace(' ', ',')
+    for pair in lang_alias_str.split(','):
+        if ':' in pair:
+            k, v = pair.split(':', 1)
+            cfg.lang_aliases[k.strip()] = v.strip()
+
+    cfg.width = int(os.environ.get('SMD_W', '75'))
+    cfg.flush_foot = int(os.environ.get('SMD_FLUSH_FOOT', '3'))
+
+    i = 0
+    while i < len(args) and args[i].startswith('-'):
+        a = args[i]
+        if a in ('-R', '--relative'):
+            cfg.no_abs = True
+        elif a in ('-a', '--no-alt'):
+            if cfg.lint_mode != '-f':
+                cfg.lint_mode = '-a'
+        elif a in ('-d', '--doc'):
+            # doc mode — render our own source's .md file
+            script = os.path.realpath(args[0] if args else __file__)
+            md_file = re.sub(r'sh$', '', script) + '.md'
+            if os.path.exists(md_file):
+                cfg.files.append(md_file)
+            else:
+                print(f"No documentation file found: {md_file}", file=sys.stderr)
+                sys.exit(1)
+        elif a in ('-h', '--help'):
+            print_help()
+            sys.exit(0)
+        elif a in ('-j', '--no-just'):
+            cfg.no_just = True
+        elif a in ('-k', '--konsole'):
+            cfg.konsole = True
+        elif a in ('-L', '-D'):
+            cfg.theme.configure(a == '-D')
+        elif a in ('-p', '--no-par-merge'):
+            cfg.no_par_merge = 1
+        elif a in ('-P', '--no-punct-merge'):
+            cfg.no_par_merge = 2
+        elif a in ('-n', '--name'):
+            cfg.show_names = True
+        elif a in ('-f', '--final'):
+            if cfg.lint_mode != '-a':
+                cfg.lint_mode = '-f'
+                cfg.indent = ' '
+        elif a in ('-l', '--linter'):
+            if cfg.lint_mode is None:
+                cfg.lint_mode = '-l'
+        elif a in ('-r', '--no-rec'):
+            cfg.no_rec = True
+        elif a in ('-o', '--hierarchy-offset'):
+            i += 1
+            if i >= len(args):
+                print("error: -o <n>[!] expected", file=sys.stderr)
+                sys.exit(1)
+            val = args[i]
+            m = re.match(r'^([1-9][0-9]*)(!)?$', val)
+            if not m:
+                print(f'error: -o <n>[!] expected, got "{val}"', file=sys.stderr)
+                sys.exit(1)
+            cfg.hshift += int(m.group(1))
+            if m.group(2):
+                cfg.no_lev1 = True
+        elif a in ('-s', '--small'):
+            cfg.small = True
+        elif a in ('-i', '--in-place'):
+            cfg.in_place = True
+            cfg.uncolored = True
+            if cfg.lint_mode is None:
+                cfg.lint_mode = '-l'
+        elif a in ('-U',):
+            cfg.uncolored = True
+        elif a in ('-v', '--version'):
+            print(VER_STRING)
+            sys.exit(0)
+        elif a in ('-w', '--width'):
+            i += 1
+            if i >= len(args):
+                print("error: -w <signed integer> expected", file=sys.stderr)
+                sys.exit(1)
+            val = args[i]
+            if not re.match(r'^[-+]?[1-9][0-9]*$', val):
+                print(f'error: -w <signed integer> expected, got "{val}"', file=sys.stderr)
+                sys.exit(1)
+            cfg.width += int(val)
+        elif a == '--debug':
+            cfg.debug = True
+        elif a == '--':
+            i += 1
+            break
+        else:
+            print(f"Unknown option {a}. try pmd -h.", file=sys.stderr)
+            sys.exit(1)
+        i += 1
+
+    cfg.files.extend(args[i:])
+
+    if cfg.width < 10:
+        cfg.width = 10
+
+    # If not explicitly themed yet, default to dark
+    if not cfg.theme.DEF:
+        cfg.theme.configure(True)
+
+    # Detect terminal width if stdout is a terminal
+    if not cfg.in_place and sys.stdout.isatty():
+        try:
+            cols = os.get_terminal_size(sys.stdout.fileno()).columns
+            if not cfg.lint_mode:
+                cols -= 1
+            if cols < cfg.width:
+                cfg.width = cols
+        except (OSError, ValueError):
+            pass
+    elif cfg.lint_mode:
+        cfg.uncolored = True
+
+    # Set indent
+    if not cfg.lint_mode:
+        cfg.indent = '   '  # smd uses 3-space indent
+    cfg.hindent = ' '
+    cfg.bonus_sp = ' '
+
+    # Detect bat
+    if not cfg.uncolored:
+        if shutil.which('batcat'):
+            cfg.bat_cmd = 'batcat'
+        elif shutil.which('bat'):
+            cfg.bat_cmd = 'bat'
+
+    # Conceal char for section markers
+    if cfg.uncolored:
+        cfg.sech = ' '
+    elif os.environ.get('TERM') == 'xterm-kitty' or cfg.konsole:
+        cfg.sech = f'{sgr(0, 3, cfg.theme.bgc)}#{cfg.theme.DEF}'
+    else:
+        cfg.sech = f'{CONCEAL}#{UNCONCEAL}'
+
+    if len(cfg.files) > 1:
+        cfg.show_names = True
+
+    return cfg
+
+
+def print_help():
+    name = 'pmd'
+    print(f"""usage (viewer)  {name} [OPTIONS] [-R] [-k] <file.md> ..
+  Renders the markdown file provided and outputs it to stdout.
+
+  If -R or --relative, do not make the links absolute (keep them as is).
+
+  If -k or --konsole is set, use alternate conceal method.
+
+  If no argument is provided, reads stdin.
+
+usage (linter)  {name} [OPTIONS]  [-l] [-i] [-a|-f] <file.md> ..
+  If -l or --linter is set, outputs re-formatted markdown.
+  If any of -i, -a, or -f is set, -l is implied.
+  If no argument is provided, reads stdin.
+
+  If -i or --in-place is set, the file argument is re-formatted in place.
+  If -a or --no-alt is set, no alternate section form.
+  If -f or --final is set, use a 1-space margin.
+
+  If output is redirected, colors are automatically disabled.
+
+usage (misc)  {name} -d|--doc|-h|--help|-v|--version
+  If -h or --help is set, displays this help and quits.
+  If -d or --doc is set, displays the documentation and quits.
+  If -v or --version is set, displays the version number and exits.
+
+OPTIONS [-s] [-L|-D] [-w <width_mod>] [-j] [-p|-P] [-o <n>[!]] [-n] [-r]
+  If -s or --small is set, give each section of level n the layout and
+  spacing of level n+1.
+
+  If -L (resp. -D), forces light (resp. dark) theme mode. Dark mode is the
+  default.
+
+  If -w <width_mod> or --width <w_m> is set, modifies the default width by
+  <width_mod> (can be negative). Several -w <width_mod> will stack.
+
+  If -j or --no-just is set, do not justify text.
+
+  If -p or --no-par-merge is set, do not merge paragraphs.
+  If -P or --no-punct-merge is set, do not merge paragraphs
+  ending with punctuation symbols.
+
+  If -o <n> or --hierarchy-offset <n> is set, each section of level k in the
+  input is understood as a section of level k+<n>.
+
+  If -n or --name is set, write the name(s) of the opened file(s) to stderr.
+
+  If -r or --no_rec is set, disable quote processing.
+
+  If --debug is set, produces debugging output.
+
+ENVIRONMENT VARIABLES
+  LANG_ALIASES: allows to define aliases for languages names e.g.: 'shell:bash'.
+  SMD_FLUSH_FOOT: section level at which flush footnote/references, in [0-5].
+  SMD_W: default maximum width.
+  SMD_SEC_MAJ/SMD_SEC_MIN/.../SMD_SSSSSEC_MIN: colors for sections, e.g. 35;1.
+""")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AST node types
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class Align(Enum):
+    LEFT = auto()
+    RIGHT = auto()
+    CENTER = auto()
+
+
+@dataclass
+class Node:
+    """Base AST node."""
+
+
+@dataclass
+class Document(Node):
+    children: list = field(default_factory=list)
+    footnotes: dict = field(default_factory=dict)
+    references: dict = field(default_factory=dict)
+
+
+@dataclass
+class Section(Node):
+    level: int = 1
+    number: str = ''
+    title: list = field(default_factory=list)  # list of inline nodes
+    is_alt_form: bool = False
+
+
+@dataclass
+class Paragraph(Node):
+    content: list = field(default_factory=list)  # inline nodes
+
+
+@dataclass
+class BlockQuote(Node):
+    children: list = field(default_factory=list)
+    admonition: Optional[str] = None  # NOTE, TIP, IMPORTANT, WARNING, CAUTION
+
+
+@dataclass
+class CodeBlock(Node):
+    language: str = ''
+    code: str = ''
+    indent: int = 0
+    fence: str = ''  # the fence chars used (``` or ~~~)
+    named: bool = False  # has a language specified
+
+
+@dataclass
+class InlineCode(Node):
+    code: str = ''
+
+
+@dataclass
+class Table(Node):
+    align: list = field(default_factory=list)  # list of Align
+    col_widths: list = field(default_factory=list)  # visual widths
+    header: Optional['TableRow'] = None
+    separator: Optional['TableRow'] = None
+    rows: list = field(default_factory=list)  # list of TableRow
+
+
+@dataclass
+class TableRow(Node):
+    cells: list = field(default_factory=list)  # list of list[inline nodes]
+
+
+@dataclass
+class ListItem(Node):
+    marker: str = '-'  # '-', '+', '*', or '1.'
+    content: list = field(default_factory=list)
+    children: list = field(default_factory=list)  # nested items
+    indent: int = 0
+    checked: Optional[bool] = None  # for task lists: True/False/None
+    description: Optional[list] = None  # for description lists
+
+
+@dataclass
+class DefinitionItem(Node):
+    term: list = field(default_factory=list)  # inline nodes
+    definition: list = field(default_factory=list)  # list of blocks
+
+
+@dataclass
+class HorizontalRule(Node):
+    char: str = '-'  # '-' or '*'
+
+
+@dataclass
+class FootnoteDef(Node):
+    key: str = ''
+    content: str = ''
+
+
+@dataclass
+class ReferenceDef(Node):
+    key: str = ''
+    url: str = ''
+    title: str = ''
+
+
+# ── Inline nodes ──
+
+@dataclass
+class Text(Node):
+    text: str = ''
+
+
+@dataclass
+class Bold(Node):
+    children: list = field(default_factory=list)
+
+
+@dataclass
+class Italic(Node):
+    children: list = field(default_factory=list)
+
+
+@dataclass
+class Strikethrough(Node):
+    children: list = field(default_factory=list)
+
+
+@dataclass
+class Link(Node):
+    text: list = field(default_factory=list)
+    url: str = ''
+    title: str = ''
+
+
+@dataclass
+class Image(Node):
+    alt: str = ''
+    url: str = ''
+    title: str = ''
+
+
+@dataclass
+class FootnoteRef(Node):
+    key: str = ''
+
+
+@dataclass
+class LineBreak(Node):
+    pass
+
+
+@dataclass
+class HtmlComment(Node):
+    text: str = ''
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Inline parser
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def parse_inline(text: str) -> list:
+    """Parse inline markdown in *text* and return a list of inline nodes."""
+    nodes = []
+    # Process inline formatting
+    # Order matters: code spans first, then bold, italic, strike, links
+
+    i = 0
+    buf = ''
+
+    def flush():
+        nonlocal buf
+        if buf:
+            nodes.append(Text(buf))
+            buf = ''
+
+    while i < len(text):
+        # HTML comment
+        if text[i:i+4] == '<!--':
+            end = text.find('-->', i + 4)
+            if end != -1:
+                flush()
+                nodes.append(HtmlComment(text[i+4:end]))
+                i = end + 3
+                continue
+
+        # Escaped characters
+        if text[i] == '\\' and i + 1 < len(text) and text[i+1] in r'\*_~`[]()!#':
+            buf += text[i + 1]
+            i += 2
+            continue
+
+        # Inline code: ``code`` or `code`
+        if text[i] == '`':
+            n = 0
+            while i + n < len(text) and text[i + n] == '`':
+                n += 1
+            close = text.find('`' * n, i + n)
+            if close != -1:
+                flush()
+                code_text = text[i + n:close]
+                nodes.append(InlineCode(code_text))
+                i = close + n
+                continue
+
+        # Strikethrough ~~text~~
+        if text[i:i+2] == '~~':
+            end = text.find('~~', i + 2)
+            if end != -1 and end > i + 2:
+                flush()
+                inner = text[i+2:end]
+                nodes.append(Strikethrough(parse_inline(inner)))
+                i = end + 2
+                continue
+
+        # Bold **text** or __text__
+        if text[i:i+2] in ('**', '__'):
+            delim = text[i:i+2]
+            end = text.find(delim, i + 2)
+            if end != -1 and end > i + 2:
+                flush()
+                inner = text[i+2:end]
+                nodes.append(Bold(parse_inline(inner)))
+                i = end + 2
+                continue
+
+        # Italic *text* or _text_
+        if text[i] in ('*', '_'):
+            ch = text[i]
+            # Make sure it's not a bold opener
+            if i + 1 < len(text) and text[i+1] == ch:
+                # This is a bold opener that didn't match above — skip
+                buf += ch
+                i += 1
+                continue
+            end = text.find(ch, i + 1)
+            if end != -1 and end > i + 1:
+                # Check word boundaries for _
+                if ch == '_':
+                    # _ must not be preceded/followed by alphanumeric
+                    before_ok = (i == 0 or not text[i-1].isalnum())
+                    after_ok = (end + 1 >= len(text) or not text[end+1].isalnum())
+                    if not (before_ok and after_ok):
+                        buf += ch
+                        i += 1
+                        continue
+                flush()
+                inner = text[i+1:end]
+                nodes.append(Italic(parse_inline(inner)))
+                i = end + 1
+                continue
+            else:
+                buf += ch
+                i += 1
+                continue
+
+        # Image ![alt](url)
+        if text[i] == '!' and i + 1 < len(text) and text[i+1] == '[':
+            m = re.match(r'!\[([^\]]*)\]\(([^ )]*)\)', text[i:])
+            if m:
+                flush()
+                nodes.append(Image(alt=m.group(1), url=m.group(2)))
+                i += m.end()
+                continue
+
+        # Link [text](url) or [text][ref]
+        if text[i] == '[':
+            m = re.match(r'\[([^\]]+)\]\(([^ )]*)\)', text[i:])
+            if m:
+                flush()
+                link_text = parse_inline(m.group(1))
+                nodes.append(Link(text=link_text, url=m.group(2)))
+                i += m.end()
+                continue
+            # Reference-style link
+            m = re.match(r'\[([^\]]+)\]\[([^\]]*)\]', text[i:])
+            if m:
+                flush()
+                link_text = parse_inline(m.group(1))
+                ref = m.group(2) or m.group(1)
+                nodes.append(Link(text=link_text, url=f'ref:{ref}'))
+                i += m.end()
+                continue
+
+        # Footnote reference [^key]
+        if text[i] == '[' and text[i+1:i+2] == '^':
+            m = re.match(r'\[\^([^\]]+)\]', text[i:])
+            if m:
+                flush()
+                nodes.append(FootnoteRef(key=m.group(1)))
+                i += m.end()
+                continue
+
+        # <br> or // or double space at end → line break
+        if text[i:i+4] == '<br>':
+            flush()
+            nodes.append(LineBreak())
+            i += 4
+            continue
+        if text[i:i+6] == '<br />':
+            flush()
+            nodes.append(LineBreak())
+            i += 6
+            continue
+
+        buf += text[i]
+        i += 1
+
+    flush()
+    return nodes
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Block parser — markdown text → AST
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def parse_explicit_number(title: str) -> tuple[Optional[str], str]:
+    """Parse an explicit section number like '1.2.3 Title' from the title.
+    Returns (number_or_None, remaining_title). Only preserves numbers
+    that are already in the source — no auto-numbering."""
+    # Match: "1. Title", "1.2 Title", "1.2.3 Title", "1 - Title"
+    m = re.match(r'^([1-9][0-9]*(\.[1-9][0-9]*)*)\.\s*-?\s*(.*)', title)
+    if m and m.group(3).strip():
+        return m.group(1), m.group(3).strip()
+    return None, title
+
+
+def parse_markdown(text: str, cfg: Config) -> Document:
+    """Parse raw markdown *text* into a Document AST."""
+    doc = Document()
+
+    # ── Prelude: normalize line endings, strip control chars, expand tabs ──
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    text = re.sub(r'[\x07\x0c\x0b]', '', text)
+    text = ESC_RE.sub('', text)
+    text = text.replace('\t', '    ')
+
+    lines = text.split('\n')
+    # Remove trailing empty line if present
+    while lines and lines[-1] == '':
+        lines.pop()
+
+    footnotes = {}   # key → content
+    references = {}  # key → url
+
+    i = 0
+
+    def parse_blocks(start: int, end: int) -> list:
+        """Parse lines[start:end] into block-level AST nodes."""
+        nonlocal i
+        blocks = []
+        j = start
+        while j < end:
+            line = lines[j]
+
+            # ── Skip blank lines ──
+            if line.strip() == '':
+                j += 1
+                continue
+
+            # ── Section header ──
+            m = re.match(r'^ {0,3}(#{1,6})\s+(.+?)(?:\s+#*)?\s*$', line)
+            if m:
+                hashes = m.group(1)
+                title_str = m.group(2)
+                level = len(hashes) + cfg.hshift
+                if cfg.no_lev1 and len(hashes) == 1:
+                    j += 1
+                    continue
+                level = min(level, 6)
+
+                # Only use explicit numbers from the source — no auto-numbering
+                explicit_num, clean_title = parse_explicit_number(title_str)
+                sec_num = explicit_num if explicit_num else ''
+
+                sec = Section(level=level, number=sec_num,
+                              title=parse_inline(clean_title))
+                blocks.append(sec)
+                j += 1
+                continue
+
+            # ── Alternate section form: underline === or --- ──
+            # Only matches if the underline immediately follows a paragraph
+            # (no blank line between them)
+            m = re.match(r'^ {0,3}(=+|-+)\s*$', line)
+            if m and blocks and isinstance(blocks[-1], Paragraph):
+                # Check that the underline is immediately after the paragraph
+                # (the previous line was the paragraph, not separated by blank lines)
+                prev_line_idx = j - 1
+                if prev_line_idx >= start and lines[prev_line_idx].strip() != '':
+                    char = m.group(1)[0]
+                    if char == '=':
+                        level = 1 + cfg.hshift
+                    else:
+                        level = 2 + cfg.hshift
+                    if cfg.no_lev1 and level == 1:
+                        j += 1
+                        continue
+                    level = min(level, 6)
+                    par = blocks.pop()
+                    sec = Section(level=level, number='',
+                                  title=par.content, is_alt_form=True)
+                    blocks.append(sec)
+                    j += 1
+                    continue
+
+            # ── Horizontal rule: --- *** ___ ──
+            m = re.match(r'^ {0,3}([-*_])\s*(?:\1\s*){2,}$', line)
+            if m:
+                ch = m.group(1)
+                blocks.append(HorizontalRule(char=ch))
+                j += 1
+                continue
+
+            # ── Fenced code block ──
+            m = re.match(r'^(\s*)([`~]{3,})\s*(.*)', line)
+            if m:
+                indent_str = m.group(1)
+                fence = m.group(2)
+                info = m.group(3).strip()
+                lang = ''
+                if info:
+                    lang = info.split()[0]
+                    lang = cfg.lang_aliases.get(lang, lang)
+
+                code_lines = []
+                j += 1
+                while j < end:
+                    cline = lines[j]
+                    # Check for closing fence
+                    cm = re.match(r'^\s*' + re.escape(fence[:len(fence)]) + r'+\s*$', cline)
+                    if cm:
+                        j += 1
+                        break
+                    code_lines.append(cline)
+                    j += 1
+
+                code = '\n'.join(code_lines)
+                # Remove common indentation
+                if indent_str:
+                    ind = len(indent_str)
+                    code_lines2 = []
+                    for cl in code_lines:
+                        if cl.startswith(indent_str):
+                            code_lines2.append(cl[ind:])
+                        elif cl.strip() == '':
+                            code_lines2.append('')
+                        else:
+                            code_lines2.append(cl)
+                    code = '\n'.join(code_lines2)
+
+                blocks.append(CodeBlock(
+                    language=lang, code=code,
+                    indent=len(indent_str), fence=fence,
+                    named=bool(lang)
+                ))
+                continue
+
+            # ── Table (pipe table) ──
+            if '|' in line and not line.strip().startswith('>'):
+                table_lines = []
+                while j < end:
+                    tl = lines[j]
+                    if '|' not in tl or tl.strip() == '':
+                        break
+                    # Don't include lines that look like continuation of other blocks
+                    if tl.strip().startswith('```') or tl.strip().startswith('#'):
+                        break
+                    table_lines.append(tl)
+                    j += 1
+
+                if len(table_lines) >= 1:
+                    table = parse_table(table_lines, cfg)
+                    if table:
+                        blocks.append(table)
+                continue
+
+            # ── Block quote ──
+            m = re.match(r'^(\s*)>\s?(.*)', line)
+            if m:
+                quote_lines = []
+                admonition = None
+                first_line = m.group(2)
+                # Check for admonition
+                am = re.match(r'^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*)', first_line, re.IGNORECASE)
+                if am:
+                    admonition = am.group(1).upper()
+                    first_line = am.group(2)
+
+                quote_lines.append(first_line)
+                j += 1
+                while j < end:
+                    ql = lines[j]
+                    qm = re.match(r'^\s*> ?(.*)', ql)
+                    if qm:
+                        quote_lines.append(qm.group(1))
+                        j += 1
+                    else:
+                        break
+
+                quote_text = '\n'.join(quote_lines)
+                if not cfg.no_rec:
+                    inner_doc = parse_markdown(quote_text, cfg)
+                    bq = BlockQuote(children=inner_doc.children, admonition=admonition)
+                else:
+                    bq = BlockQuote(children=[Paragraph(content=parse_inline(quote_text))],
+                                    admonition=admonition)
+                blocks.append(bq)
+                continue
+
+            # ── Indented code block (4 spaces) ──
+            if re.match(r'^ {4,}\S', line):
+                code_lines2 = []
+                while j < end:
+                    cl = lines[j]
+                    if cl.startswith('    ') and cl.strip():
+                        code_lines2.append(cl[4:])
+                        j += 1
+                    elif cl.strip() == '':
+                        code_lines2.append('')
+                        j += 1
+                    else:
+                        break
+                # Remove trailing blank lines
+                while code_lines2 and code_lines2[-1] == '':
+                    code_lines2.pop()
+                blocks.append(CodeBlock(language='', code='\n'.join(code_lines2), indent=0))
+                continue
+
+            # ── Footnote / reference definition ──
+            m = re.match(r'^\s*\[\^([^\]]+)\]:\s+(.+)', line)
+            if m:
+                footnotes[m.group(1)] = m.group(2).strip()
+                j += 1
+                continue
+            m = re.match(r'^\s*\[([^\]]+)\]:\s+(.+)', line)
+            if m:
+                references[m.group(1)] = m.group(2).strip()
+                j += 1
+                continue
+
+            # ── List items ──
+            m = re.match(r'^(\s*)([-+*]|\d+[.)])\s+(.*)', line)
+            if m:
+                items, j = parse_list(j, end, cfg)
+                blocks.extend(items)
+                continue
+
+            # ── Definition list ──
+            m = re.match(r'^(\s*)(.+)$', line)
+            if m:
+                # Check if next non-blank line is a definition
+                k = j + 1
+                while k < end and lines[k].strip() == '':
+                    k += 1
+                if k < end and re.match(r'^\s*:\s+', lines[k]):
+                    # It's a definition list
+                    term_text = m.group(2).strip()
+                    defs = []
+                    k2 = j + 1
+                    while k2 < end:
+                        dl = lines[k2]
+                        dm = re.match(r'^\s*:\s+(.*)', dl)
+                        if dm:
+                            def_content = dm.group(1)
+                            defs.append(parse_inline(def_content))
+                            k2 += 1
+                        elif dl.strip() == '':
+                            k2 += 1
+                        else:
+                            break
+                    blocks.append(DefinitionItem(
+                        term=parse_inline(term_text),
+                        definition=defs
+                    ))
+                    j = k2
+                    continue
+
+            # ── Paragraph ──
+            para_lines = [line]
+            j += 1
+            while j < end:
+                pl = lines[j]
+                if pl.strip() == '':
+                    break
+                # Stop if it starts a new block element
+                if (re.match(r'^ {0,3}(#{1,6})\s', pl) or
+                    re.match(r'^ {0,3}([`~]{3,})', pl) or
+                    re.match(r'^(\s*)([-+*]|\d+[.)])\s+', pl) or
+                    re.match(r'^\s*>', pl) or
+                    re.match(r'^ {0,3}(=+|-+)\s*$', pl) or
+                    re.match(r'^ {0,3}([-*_])\s*(?:\1\s*){2,}$', pl)):
+                    break
+                para_lines.append(pl)
+                j += 1
+
+            para_text = ' '.join(para_lines)
+            # Handle <br> in paragraph
+            para_text = re.sub(r'<br\s*/?>', '\n', para_text)
+
+            if cfg.no_par_merge == 0:
+                # Merge paragraphs: join lines with space (already done above)
+                pass
+            elif cfg.no_par_merge == 2:
+                # Don't merge if ending with punctuation
+                pass
+
+            blocks.append(Paragraph(content=parse_inline(para_text)))
+
+        return blocks
+
+    def parse_list(start: int, end: int, cfg: Config) -> tuple[list, int]:
+        """Parse a list starting at line *start*. Returns (list of ListItem, new position)."""
+        items = []
+        j = start
+        while j < end:
+            line = lines[j]
+            if line.strip() == '':
+                j += 1
+                continue
+            m = re.match(r'^(\s*)([-+*]|\d+[.)])\s+(.*)', line)
+            if not m:
+                break
+            indent = len(m.group(1))
+            marker = m.group(2)
+            content_text = m.group(3)
+
+            # Check for task list checkbox
+            checked = None
+            cm = re.match(r'^\[([ xX])\]\s*(.*)', content_text)
+            if cm:
+                checked = cm.group(1).lower() == 'x'
+                content_text = cm.group(2)
+
+            # Collect continuation lines
+            j += 1
+            while j < end:
+                cl = lines[j]
+                if cl.strip() == '':
+                    # Check if next non-blank line is still part of this item
+                    k = j + 1
+                    while k < end and lines[k].strip() == '':
+                        k += 1
+                    if k < end and len(lines[k]) - len(lines[k].lstrip()) > indent:
+                        j += 1
+                        continue
+                    elif k < end and re.match(r'^(\s*)([-+*]|\d+[.)])\s+', lines[k]):
+                        break
+                    else:
+                        break
+                elif cl.startswith(' ' * (indent + 1)) or cl.startswith('\t'):
+                    content_text += ' ' + cl.strip()
+                    j += 1
+                else:
+                    break
+
+            item = ListItem(
+                marker=marker,
+                content=parse_inline(content_text),
+                indent=indent,
+                checked=checked,
+            )
+            items.append(item)
+        return items, j
+
+    doc.children = parse_blocks(0, len(lines))
+    doc.footnotes = footnotes
+    doc.references = references
+    return doc
+
+
+def parse_table(table_lines: list[str], cfg: Config) -> Optional[Table]:
+    """Parse pipe-delimited table lines into a Table AST node."""
+    if not table_lines:
+        return None
+
+    rows_raw = []
+    for tl in table_lines:
+        # Strip leading/trailing pipes and whitespace
+        stripped = tl.strip()
+        if stripped.startswith('|'):
+            stripped = stripped[1:]
+        if stripped.endswith('|'):
+            stripped = stripped[:-1]
+        cells = [c.strip() for c in stripped.split('|')]
+        rows_raw.append(cells)
+
+    if not rows_raw:
+        return None
+
+    # Detect separator row
+    sep_idx = -1
+    for idx, row in enumerate(rows_raw):
+        is_sep = all(re.match(r'^:?-{1,}:?$', c.strip()) for c in row if c.strip())
+        if is_sep:
+            sep_idx = idx
+            break
+
+    # Parse alignment from separator
+    align = []
+    if sep_idx >= 0:
+        sep_row = rows_raw[sep_idx]
+        for cell in sep_row:
+            cell = cell.strip()
+            if cell.startswith(':') and cell.endswith(':'):
+                align.append(Align.CENTER)
+            elif cell.endswith(':'):
+                align.append(Align.RIGHT)
+            else:
+                align.append(Align.LEFT)
+
+    # Normalize column count
+    n_cols = max(len(r) for r in rows_raw)
+    for r in rows_raw:
+        while len(r) < n_cols:
+            r.append('')
+    while len(align) < n_cols:
+        align.append(Align.LEFT)
+
+    table = Table(align=align)
+
+    # Parse cells
+    for idx, row in enumerate(rows_raw):
+        if idx == sep_idx:
+            table.separator = TableRow(cells=[parse_inline(c) for c in row])
+            continue
+        tr = TableRow(cells=[parse_inline(c) for c in row])
+        if table.header is None and sep_idx > 0 and idx < sep_idx:
+            table.header = tr
+        else:
+            if idx != sep_idx:
+                table.rows.append(tr)
+
+    # If no separator, treat first row as header
+    if sep_idx < 0 and rows_raw:
+        table.header = TableRow(cells=[parse_inline(c) for c in rows_raw[0]])
+        table.rows = [TableRow(cells=[parse_inline(c) for c in r]) for r in rows_raw[1:]]
+
+    # Compute column widths
+    all_rows = []
+    if table.header:
+        all_rows.append(table.header)
+    all_rows.extend(table.rows)
+
+    col_widths = [1] * n_cols
+    for row in all_rows:
+        for ci, cell_nodes in enumerate(row.cells):
+            w = display_width(render_inline_plain(cell_nodes))
+            if w > col_widths[ci]:
+                col_widths[ci] = w
+    table.col_widths = col_widths
+
+    return table
+
+
+def render_inline_plain(nodes: list) -> str:
+    """Render inline nodes to plain text (no ANSI)."""
+    parts = []
+    for n in nodes:
+        if isinstance(n, Text):
+            parts.append(n.text)
+        elif isinstance(n, Bold):
+            parts.append('**')
+            parts.append(render_inline_plain(n.children))
+            parts.append('**')
+        elif isinstance(n, Italic):
+            parts.append('*')
+            parts.append(render_inline_plain(n.children))
+            parts.append('*')
+        elif isinstance(n, Strikethrough):
+            parts.append('~~')
+            parts.append(render_inline_plain(n.children))
+            parts.append('~~')
+        elif isinstance(n, InlineCode):
+            parts.append(f'`{n.code}`')
+        elif isinstance(n, Link):
+            parts.append(render_inline_plain(n.text))
+        elif isinstance(n, Image):
+            parts.append(n.alt)
+        elif isinstance(n, FootnoteRef):
+            parts.append(f'[^{n.key}]')
+        elif isinstance(n, LineBreak):
+            parts.append('\n')
+        elif isinstance(n, HtmlComment):
+            pass
+    return ''.join(parts)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Renderer — AST → terminal output
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class Renderer:
+    def __init__(self, cfg: Config):
+        self.cfg = cfg
+        self.t = cfg.theme
+        self.width = cfg.width
+        self.output = []
+        self._rule = '─' * cfg.width if not cfg.lint_mode else '-' * cfg.width
+        self._bat_cache = {}
+        self._prev_was_section = False
+        self._file_path = ''  # set for OSC8 link generation
+
+    def render(self, doc: Document) -> str:
+        """Render the full document to a string."""
+        # Emit smd-style opening: space + zero-width space
+        self.emit(' ​')
+
+        for child in doc.children:
+            self.render_block(child)
+
+        # Flush footnotes if configured
+        if doc.footnotes and self.cfg.flush_foot == 0:
+            self.render_footnotes(doc.footnotes, doc.references)
+
+        return '\n'.join(self.output) + '\n'
+
+    def emit(self, text: str = ''):
+        self.output.append(text)
+
+    def render_block(self, node: Node):
+        if isinstance(node, Section):
+            self.render_section(node)
+        elif isinstance(node, Paragraph):
+            self._prev_was_section = False
+            self.render_paragraph(node)
+        elif isinstance(node, CodeBlock):
+            self.render_code_block(node)
+        elif isinstance(node, Table):
+            self.render_table(node)
+        elif isinstance(node, BlockQuote):
+            self.render_blockquote(node)
+        elif isinstance(node, ListItem):
+            self.render_list_item(node)
+        elif isinstance(node, DefinitionItem):
+            self.render_definition_item(node)
+        elif isinstance(node, HorizontalRule):
+            self.render_hr(node)
+        elif isinstance(node, FootnoteDef):
+            pass  # handled separately
+        elif isinstance(node, ReferenceDef):
+            pass  # handled separately
+
+    # ── Section rendering ──
+
+    @staticmethod
+    def _slugify(text: str) -> str:
+        """Generate a slug matching smd's algorithm:
+        lowercase → replace non-[a-z0-9] with - → trim leading/trailing -"""
+        slug = text.lower()
+        slug = re.sub(r'[^a-z0-9]+', '-', slug)
+        slug = slug.strip('-')
+        return slug
+
+    def render_section(self, sec: Section):
+        t = self.t
+        cfg = self.cfg
+        sech = cfg.sech
+
+        # Get the section title text
+        title_plain = render_inline_plain(sec.title)
+        title_colored = self.render_inline(sec.title)
+
+        # Determine colours for this level
+        maj, min_col = self._sec_colors(sec.level)
+
+        if cfg.lint_mode:
+            hashes = '#' * sec.level
+            self.emit(f'{hashes} {sec.number} {title_plain}')
+            return
+
+        # Number display: smd only shows numbers present in the source
+        num_str = sec.number
+        if num_str:
+            if '.' not in num_str:
+                num_display = f'{num_str}. '
+            else:
+                num_display = f'{num_str} '
+        else:
+            num_display = ''
+
+        bp = cfg.bonus_sp  # ' ' — 1-space prefix
+
+        # ── Generate slug for hidden anchor ──
+        # Include number prefix in slug to match smd: "1. 总览" → "1"
+        slug_source = f'{num_str} {title_plain}' if num_str else title_plain
+        anchor_slug = self._slugify(slug_source)
+        anchor_line = f'{CONCEAL}#{anchor_slug}{UNCONCEAL}'
+
+        # ── Section spacing ──
+        # smd pattern: blanks → anchor → section content → trailing blanks
+        # When section follows section, trailing blanks of prev are suppressed.
+
+        if sec.level == 1:
+            # H1: 3 leading blanks → anchor → title → 3 trailing blanks
+            if self._prev_was_section:
+                while self.output and self.output[-1] == '':
+                    self.output.pop()
+            self.emit('')
+            self.emit('')
+            self.emit('')
+            # Emit anchor after blanks
+            self.emit(anchor_line)
+            # H1: smd centred title with concealed #
+            inner = f' {sech}{maj}{num_display}{title_colored}{t.DEF} '
+            inner_w = display_width(inner)
+            if inner_w < cfg.width:
+                inner += ' ' * (cfg.width - inner_w)
+            self.emit(f'{bp}{min_col}{t.DEF}{inner}{min_col}{t.DEF}')
+            # Trailing blanks
+            self.emit('')
+            self.emit('')
+            self.emit('')
+            self._prev_was_section = True
+
+        elif sec.level == 2:
+            # H2: 2 leading blanks → anchor → ▄/title/▀ → 1 trailing blank
+            if self._prev_was_section:
+                while self.output and self.output[-1] == '':
+                    self.output.pop()
+            self.emit('')
+            self.emit('')
+            self.emit(anchor_line)
+            self.emit(f'{bp}{min_col}▄{t.DEF}')
+            self.emit(f'{bp}{min_col}█{t.DEF}{sech}{maj}{num_display}{title_colored}{t.DEF}')
+            # Underline: ▀ + dashes matching codepoints of '█#num_title'
+            title_codepoints = len(f'█#{num_display}{title_plain}')
+            underline = '─' * max(title_codepoints, 1)
+            self.emit(f'{bp}{min_col}▀{underline}{t.DEF}')
+            self.emit('')  # trailing blank
+            self._prev_was_section = True
+
+        elif sec.level == 3:
+            # H3: 1 leading blank → anchor+title → 1 trailing blank
+            if self._prev_was_section:
+                while self.output and self.output[-1] == '':
+                    self.output.pop()
+            self.emit('')
+            self.emit(anchor_line)
+            self.emit(f'{bp}{min_col}█{t.DEF}{sech}{maj}{num_display}{title_colored}{t.DEF}')
+            self.emit('')
+            self._prev_was_section = True
+
+        elif sec.level == 4:
+            self.emit(anchor_line)
+            self.emit(f'{bp}{min_col}▒{t.DEF}{sech}{maj}{num_display}{title_colored}{t.DEF}')
+            self.emit('')
+            self._prev_was_section = True
+
+        elif sec.level >= 5:
+            self.emit(anchor_line)
+            self.emit(f'{bp}{min_col}░{t.DEF}{sech}{maj}{num_display}{title_colored}{t.DEF}')
+            self.emit('')
+            self._prev_was_section = True
+
+    def _sec_colors(self, level: int) -> tuple[str, str]:
+        t = self.t
+        colors = [
+            (t.SEC_MAJ, t.SEC_MIN),
+            (t.SSEC_MAJ, t.SSEC_MIN),
+            (t.SSSEC_MAJ, t.SSSEC_MIN),
+            (t.SSSSEC_MAJ, t.SSSSEC_MIN),
+            (t.SSSSSEC_MAJ, t.SSSSSEC_MIN),
+            (t.SSSSSEC_MAJ, t.SSSSSEC_MIN),
+        ]
+        idx = min(level - 1, len(colors) - 1)
+        return colors[idx]
+
+    # ── Paragraph rendering ──
+
+    def render_paragraph(self, para: Paragraph):
+        if self.cfg.lint_mode:
+            text = render_inline_plain(para.content)
+            self.emit(text)
+            return
+
+        text = self.render_inline(para.content)
+        if not text.strip():
+            return
+        text = f'{self.t.DEF}{text}{self.t.DEF}'
+        # smd uses cfg.indent ('   ') prefix for paragraphs
+        self._emit_wrapped(text, indent=self.cfg.indent)
+
+    def _emit_wrapped(self, text: str, indent: str = ''):
+        """Wrap *text* to fit within self.width and emit each line.
+        If justification is enabled, expand spaces to fill width."""
+        max_w = self.width - display_width(indent)
+        lines = text.split('\n')
+        for line in lines:
+            if not line.strip():
+                self.emit(line)
+                continue
+            dw = display_width(line)
+            if dw <= max_w:
+                # Disable justification for now — smd's justify algorithm has
+                # complex punctuation rules that differ from simple space distribution
+                # if not self.cfg.no_just and dw < max_w and ' ' in line.strip():
+                #     line = self._justify(line, max_w)
+                self.emit(indent + line)
+            else:
+                wrapped = self._wrap_ansi(line, max_w)
+                for i, wl in enumerate(wrapped):
+                    # Disable justification — see above
+                    # if (not self.cfg.no_just and i < len(wrapped) - 1
+                    #         and display_width(wl) < max_w and ' ' in wl.strip()):
+                    #     wl = self._justify(wl, max_w)
+                    self.emit(indent + wl)
+
+    def _justify(self, text: str, width: int) -> str:
+        """Justify a line of text to exactly *width* display columns
+        by distributing extra spaces between words."""
+        # Split into words (preserving ANSI codes)
+        words = text.split(' ')
+        words = [w for w in words if w]  # remove empty from multiple spaces
+        if len(words) <= 1:
+            return text
+
+        total_word_w = sum(display_width(w) for w in words)
+        total_spaces_needed = width - total_word_w
+        n_gaps = len(words) - 1
+        if n_gaps <= 0 or total_spaces_needed <= n_gaps:
+            return text
+
+        base_spaces = total_spaces_needed // n_gaps
+        extra = total_spaces_needed % n_gaps
+
+        parts = []
+        for i, word in enumerate(words):
+            parts.append(word)
+            if i < n_gaps:
+                spaces = base_spaces + (1 if i < extra else 0)
+                parts.append(' ' * spaces)
+        return ''.join(parts)
+
+    def _wrap_ansi(self, text: str, max_w: int) -> list[str]:
+        """Wrap text containing ANSI codes to *max_w* display width."""
+        words = text.split(' ')
+        lines = []
+        current = ''
+        current_w = 0
+
+        for word in words:
+            ww = display_width(word)
+            if current_w + ww + (1 if current else 0) <= max_w:
+                if current:
+                    current += ' ' + word
+                    current_w += 1 + ww
+                else:
+                    current = word
+                    current_w = ww
+            else:
+                if current:
+                    lines.append(current)
+                if ww <= max_w:
+                    current = word
+                    current_w = ww
+                else:
+                    # Word itself is too long, just add it
+                    current = word
+                    current_w = ww
+        if current:
+            lines.append(current)
+        return lines
+
+    # ── Inline rendering ──
+
+    def render_inline(self, nodes: list) -> str:
+        """Render inline nodes to ANSI-colored text."""
+        parts = []
+        for n in nodes:
+            if isinstance(n, Text):
+                parts.append(self._typographic(n.text))
+            elif isinstance(n, Bold):
+                inner = self.render_inline(n.children)
+                parts.append(f'{BOLD}{inner}{UBOLD}')
+            elif isinstance(n, Italic):
+                inner = self.render_inline(n.children)
+                parts.append(f'{ITALIC}{inner}{UITALIC}')
+            elif isinstance(n, Strikethrough):
+                inner = self.render_inline(n.children)
+                parts.append(f'{STRIKE}{inner}{USTRIKE}')
+            elif isinstance(n, InlineCode):
+                # smd renders inline code without backticks, just faint
+                parts.append(f'{self.t.FAINT}{n.code}{self.t.UFAINT}')
+            elif isinstance(n, Link):
+                self._render_link(n, parts)
+            elif isinstance(n, Image):
+                self._render_image(n, parts)
+            elif isinstance(n, FootnoteRef):
+                parts.append(f'{self.t.DEF}{self.t.FAINT}[{self.t.UFAINT}'
+                             f'{self.t.REFCOL}^{n.key}'
+                             f'{self.t.DEF}{self.t.FAINT}]{self.t.UFAINT}')
+            elif isinstance(n, LineBreak):
+                parts.append('\n')
+            elif isinstance(n, HtmlComment):
+                if self.cfg.lint_mode:
+                    parts.append(f'<!--{n.text}-->')
+        return ''.join(parts)
+
+    def _typographic(self, text: str) -> str:
+        """Apply typographic substitutions in final/viewer mode."""
+        if self.cfg.lint_mode:
+            return text
+        # ... → …
+        text = re.sub(r'\.\.\.', '…', text)
+        # --- → –
+        text = re.sub(r'(?<!-)---(?!-)', '––', text)
+        # -- → –
+        text = re.sub(r'(?<!-)--(?!-)', '–', text)
+        return text
+
+    def _render_link(self, link: Link, parts: list):
+        t = self.t
+        cfg = self.cfg
+        text = self.render_inline(link.text)
+        url = link.url
+
+        # Resolve reference links
+        if url.startswith('ref:'):
+            ref_key = url[4:]
+            parts.append(f'{t.LNCOL}{text}{t.DEF}{t.FAINT}'
+                         f'[{t.UFAINT}{t.REFCOL}{ref_key}'
+                         f'{t.DEF}{t.FAINT}]{t.UFAINT}')
+            return
+
+        if cfg.lint_mode:
+            parts.append(f'{t.FAINT}[{t.UFAINT}{t.LNCOL}{text}'
+                         f'{t.DEF}{t.FAINT}]({t.FAINT}{t.PCOLD}{url}'
+                         f'{t.DEF}{t.FAINT}){t.UFAINT}')
+            return
+
+        # OSC8 hyperlink
+        if cfg.no_abs or url.startswith(('http://', 'https://', 'ftp://',
+                                          'file://', 'mailto:')):
+            full_url = url
+        elif url.startswith('#'):
+            # Anchor link: resolve to full file path
+            if self._file_path:
+                full_url = f'file://{self._file_path}{url}'
+            else:
+                full_url = url
+        else:
+            full_url = f'file://{os.getcwd()}/{url}'
+
+        # OSC8 format: ESC ] 8 ;; URL ESC \  text  ESC ] 8 ;; ESC \
+        osc_open = f'\x1b]8;;{full_url}\x1b\\'
+        osc_close = f'\x1b]8;;\x1b\\'
+        parts.append(f'{osc_open}{t.LNCOL}{text}{t.DEF}{t.UFAINT}{osc_close}')
+
+    def _render_image(self, img: Image, parts: list):
+        t = self.t
+        parts.append(f'{t.PCOL}image:{t.DEF}')
+
+    # ── Code block rendering ──
+
+    def render_code_block(self, block: CodeBlock):
+        t = self.t
+        cfg = self.cfg
+        gray = t.GRAY
+        DEF = t.DEF
+
+        if cfg.lint_mode:
+            fence = block.fence or '```'
+            self.emit(f'{cfg.indent}{fence}{block.language}')
+            for line in block.code.split('\n'):
+                self.emit(f'{cfg.indent}{line}')
+            self.emit(f'{cfg.indent}{fence}')
+            return
+
+        # Syntax highlighting with bat
+        code = block.code
+        if block.language and cfg.bat_cmd and not cfg.uncolored:
+            code = self._highlight_bat(block.code, block.language)
+
+        # smd code block: `    ┌── json ──╴` / `    │ code` / `    ╵`
+        # smd uses bonus_sp + indent = 4 spaces
+        ci = cfg.bonus_sp + cfg.indent
+        if block.named:
+            self.emit(f'{ci}{DEF}{gray}┌── {block.language} ──╴{DEF}')
+        else:
+            fence_display = block.fence or '```'
+            self.emit(f'{ci}{DEF}{gray}┌─{fence_display}─╴{DEF}')
+
+        # Code lines
+        for line in code.split('\n'):
+            self.emit(f'{ci}{DEF}{gray}│{t.QUOTED} {line}{DEF}')
+
+        # Footer — smd uses `╵`
+        self.emit(f'{ci}{DEF}{gray}╵{DEF}')
+
+    def _highlight_bat(self, code: str, lang: str) -> str:
+        """Use bat for syntax highlighting."""
+        try:
+            result = subprocess.run(
+                [self.cfg.bat_cmd, '--color', 'always', '--italic-text', 'always',
+                 '--style', 'plain', '-P', '-l', lang],
+                input=code, capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                return result.stdout.rstrip('\n')
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            pass
+        return code
+
+    # ── Table rendering (with cell wrapping) ──
+
+    def render_table(self, table: Table):
+        t = self.t
+        cfg = self.cfg
+        acol = t.ACOL
+        aecol = t.AECOL
+
+        if cfg.lint_mode:
+            self._render_table_lint(table)
+            return
+
+        col_widths = list(table.col_widths)
+        n_cols = len(col_widths)
+        align = table.align
+        # Total width: sum(col_widths) + 2*n_cols (padding) + (n_cols+1) (borders)
+        total_w = sum(col_widths) + 2 * n_cols + (n_cols + 1)
+
+        # If table is too wide, shrink columns to fit terminal
+        if total_w > cfg.width:
+            available = cfg.width - 2 * n_cols - (n_cols + 1)
+            if available < n_cols:
+                available = n_cols
+            scale = available / sum(col_widths) if sum(col_widths) > 0 else 1
+            col_widths = [max(4, int(w * scale)) for w in col_widths]
+
+        # smd tables have 3-space prefix (bonus_sp + indent prefix)
+        tbl_prefix = '   '
+
+        # Helper to emit a content line with per-cell │ borders
+        def emit_row(grid_line):
+            parts = []
+            for ci, cell_text in enumerate(grid_line):
+                parts.append(f' {cell_text} ')
+            self.emit(f'{tbl_prefix}{acol}│{aecol}' + f'{acol}│{aecol}'.join(parts) + f'{acol}│{aecol}')
+
+        # Render header
+        if table.header:
+            top_border = self._table_border('┌', '┬', '┐', '─', col_widths)
+            self.emit(f'{tbl_prefix}{acol}{top_border}{aecol}')
+            for grid_line in self._build_row_grid(table.header.cells, col_widths, align):
+                emit_row(grid_line)
+
+        # Separator
+        sep_border = self._table_border('├', '┼', '┤', '─', col_widths)
+        self.emit(f'{tbl_prefix}{acol}{sep_border}{aecol}')
+
+        # Body rows
+        for row in table.rows:
+            for grid_line in self._build_row_grid(row.cells, col_widths, align):
+                emit_row(grid_line)
+
+        # Bottom border
+        bottom_border = self._table_border('└', '┴', '┘', '─', col_widths)
+        self.emit(f'{tbl_prefix}{acol}{bottom_border}{aecol}')
+
+    def _table_border(self, left: str, mid: str, right: str,
+                      fill: str, col_widths: list[int]) -> str:
+        parts = []
+        for w in col_widths:
+            parts.append(fill * (w + 2))  # +2 for cell padding
+        return left + mid.join(parts) + right
+
+    def _build_row_grid(self, cells: list, col_widths: list[int],
+                        align_list: list[Align]) -> list[list[str]]:
+        """Build a grid of aligned cell strings for a row.
+        smd does NOT wrap cells — each cell is a single line."""
+        n_cols = len(col_widths)
+        # Ensure enough cells
+        while len(cells) < n_cols:
+            cells.append([Text('')])
+
+        # Render each cell inline, no wrapping
+        row = []
+        for ci in range(n_cols):
+            cell_nodes = cells[ci] if ci < len(cells) else [Text('')]
+            colored = self.render_inline(cell_nodes)
+            plain = strip_ansi(colored)
+            w = col_widths[ci]
+            a = align_list[ci] if ci < len(align_list) else Align.LEFT
+            row.append(self._align_cell(plain, w, a))
+        return [row]
+
+    def _align_cell(self, text: str, width: int, alignment: Align) -> str:
+        """Align and pad cell text to exactly *width* display columns."""
+        dw = display_width(text)
+        if dw >= width:
+            return text
+        padding = width - dw
+        if alignment == Align.RIGHT:
+            return ' ' * padding + text
+        elif alignment == Align.CENTER:
+            left_pad = padding // 2
+            right_pad = padding - left_pad
+            return ' ' * left_pad + text + ' ' * right_pad
+        else:  # LEFT
+            return text + ' ' * padding
+
+    def _render_table_lint(self, table: Table):
+        """Render table in linter mode."""
+        n_cols = len(table.col_widths)
+        all_rows = []
+        if table.header:
+            all_rows.append(table.header)
+        all_rows.extend(table.rows)
+
+        for row in all_rows:
+            cells = []
+            for ci in range(n_cols):
+                if ci < len(row.cells):
+                    cells.append(render_inline_plain(row.cells[ci]))
+                else:
+                    cells.append('')
+            self.emit('| ' + ' | '.join(cells) + ' |')
+
+            # Emit separator after header
+            if row is table.header and table.separator is not None:
+                sep_cells = []
+                for ci in range(n_cols):
+                    a = table.align[ci] if ci < len(table.align) else Align.LEFT
+                    if a == Align.CENTER:
+                        sep_cells.append(':---:')
+                    elif a == Align.RIGHT:
+                        sep_cells.append('---:')
+                    else:
+                        sep_cells.append('---')
+                self.emit('| ' + ' | '.join(sep_cells) + ' |')
+
+    # ── Block quote rendering ──
+
+    def render_blockquote(self, bq: BlockQuote):
+        t = self.t
+        cfg = self.cfg
+        gray = t.GRAY
+        DEF = t.DEF
+        quoted = t.QUOTED
+
+        if cfg.lint_mode:
+            prefix = '> '
+            for child in bq.children:
+                if isinstance(child, Paragraph):
+                    self.emit(prefix + render_inline_plain(child.content))
+                elif isinstance(child, Section):
+                    hashes = '#' * child.level
+                    self.emit(prefix + f'{hashes} {render_inline_plain(child.title)}')
+                else:
+                    self.emit(prefix + str(child))
+            self.emit('')
+            return
+
+        # Admonition
+        if bq.admonition:
+            adm_colors = {
+                'NOTE': t.NOTE_C,
+                'TIP': t.TIP_C,
+                'IMPORTANT': t.IMP_C,
+                'WARNING': t.WRN_C,
+                'CAUTION': t.CAUTION_C,
+            }
+            adm_col = adm_colors.get(bq.admonition, DEF)
+            qi = ' ' + cfg.indent  # smd: 4 spaces for quote border (bonus_sp + indent)
+            self.emit(f'{qi}{gray}╷{DEF}')
+            self.emit(f'{qi}{gray}│{DEF}{BOLD}{gray}{adm_col}'
+                      f'[{bq.admonition}]{UBOLD}{DEF}')
+            for child in bq.children:
+                self._render_quoted_block(child, f'{qi}{gray}│{DEF}{quoted} ')
+            self.emit(f'{qi}{gray}╵{DEF}')
+            self.emit('')
+            return
+
+        # Regular quote — smd style: ╷ / │ / ╵
+        qi = ' ' + cfg.indent  # smd: 4 spaces for quote border
+        self.emit(f'{qi}{gray}╷{DEF}')
+        for child in bq.children:
+            self._render_quoted_block(child, f'{qi}{gray}│{DEF}{quoted} ')
+        self.emit(f'{qi}{gray}╵{DEF}')
+        self.emit('')
+
+    def _render_quoted_block(self, node: Node, prefix: str):
+        """Render a block inside a quote with the given prefix."""
+        if isinstance(node, Paragraph):
+            text = self.render_inline(node.content)
+            text = f'{self.t.DEF}{text}{self.t.DEF}'
+            for line in self._wrap_ansi(text, self.cfg.width - display_width(prefix)):
+                self.emit(f'{prefix}{line}')
+        elif isinstance(node, Section):
+            title = self.render_inline(node.title)
+            hashes = '#' * node.level
+            self.emit(f'{prefix}{hashes} {title}')
+        elif isinstance(node, CodeBlock):
+            for cl in node.code.split('\n'):
+                self.emit(f'{prefix}{cl}')
+        elif isinstance(node, BlockQuote):
+            sub_prefix = prefix + f'>{self.t.QUOTED} '
+            for child in node.children:
+                self._render_quoted_block(child, sub_prefix)
+        elif isinstance(node, ListItem):
+            self._render_list_item(node, prefix=prefix)
+
+    # ── List rendering ──
+
+    def render_list_item(self, item: ListItem, prefix: str = ''):
+        t = self.t
+        cfg = self.cfg
+        DEF = t.DEF
+
+        if cfg.lint_mode:
+            marker = item.marker
+            check = ''
+            if item.checked is True:
+                check = '[x] '
+            elif item.checked is False:
+                check = '[ ] '
+            indent_str = ' ' * item.indent
+            self.emit(f'{indent_str}{marker} {check}{render_inline_plain(item.content)}')
+            return
+
+        # smd list indent:
+        # Numbered first level: "    " (4 spaces) + "1. "
+        # Bullet first level: "     " (5 spaces) + "• "
+        is_numbered = bool(re.match(r'\d+[.)]', item.marker))
+        if is_numbered:
+            # Numbered list: 4 spaces base (bonus_sp + indent)
+            base_indent = cfg.bonus_sp + cfg.indent  # "    " (4 spaces)
+        else:
+            # Bullet list: 5 spaces base
+            base_indent = cfg.bonus_sp + cfg.indent + ' '  # "     " (5 spaces)
+        indent_str = base_indent + '  ' * (item.indent // 2) + ' ' * (item.indent % 2)
+
+        # Marker
+        marker_display = ''
+        if is_numbered:
+            marker_display = f'{BOLD}{item.marker}{UBOLD} '
+        elif item.indent <= 2:
+            marker_display = f'{DEF}• '
+        elif item.indent <= 6:
+            marker_display = f'{DEF}‒ '
+        elif item.indent <= 10:
+            marker_display = f'{t.FAINT}• {t.UFAINT}{DEF}'
+        else:
+            marker_display = f'{t.FAINT}‒ {t.UFAINT}{DEF}'
+
+        # Task list checkbox
+        check_display = ''
+        if item.checked is True:
+            check_display = f'{BOLD}[✓]{UBOLD} '
+        elif item.checked is False:
+            check_display = f'{t.FAINT}[ ]{t.UFAINT} '
+
+        text = self.render_inline(item.content)
+        text = f'{DEF}{text}{DEF}'
+        first_line_prefix = f'{prefix}{indent_str}{marker_display}{check_display}'
+        cont_prefix = f'{prefix}{indent_str}' + ' ' * display_width(marker_display + check_display)
+
+        lines = self._wrap_ansi(text, cfg.width - display_width(first_line_prefix))
+        if lines:
+            self.emit(first_line_prefix + lines[0])
+            for ll in lines[1:]:
+                self.emit(cont_prefix + ll)
+        else:
+            self.emit(first_line_prefix)
+
+    # ── Definition item rendering ──
+
+    def render_definition_item(self, defn: DefinitionItem):
+        t = self.t
+        cfg = self.cfg
+
+        if cfg.lint_mode:
+            self.emit(render_inline_plain(defn.term))
+            for d in defn.definition:
+                self.emit(': ' + render_inline_plain(d))
+            return
+
+        term = self.render_inline(defn.term)
+        self.emit(f'{cfg.indent}{t.DEF}{BOLD}{term}{UBOLD}{t.DEF}')
+        for d in defn.definition:
+            def_text = self.render_inline(d)
+            self.emit(f'{cfg.indent}{t.DEF}→ {def_text}{t.DEF}')
+
+    # ── Horizontal rule ──
+
+    def render_hr(self, rule: HorizontalRule):
+        t = self.t
+        cfg = self.cfg
+
+        if cfg.lint_mode:
+            if rule.char == '*':
+                self.emit('***')
+            else:
+                self.emit('---')
+            return
+
+        # smd: --- HR is divided by 3, *** HR is full width
+        if rule.char == '*':
+            rule_text = f'{BOLD}{self._rule}{RESET}'
+            self.emit(f'{cfg.indent}{t.DEF}{t.GRAY}{rule_text}{t.DEF}')
+        else:
+            # --- HR: smd divides the rule by 3
+            hr_width = cfg.width // 3
+            rule_text = '─' * hr_width
+            self.emit(f'{cfg.indent}{t.DEF}{t.GRAY}{rule_text}{t.DEF}')
+
+    # ── Footnotes ──
+
+    def render_footnotes(self, footnotes: dict, references: dict):
+        if not footnotes and not references:
+            return
+
+        t = self.t
+        self.emit('')
+        self.emit(f'{t.GRAY}{"─" * self.cfg.width}{t.DEF}')
+
+        for key, content in footnotes.items():
+            self.emit(f'{t.DEF}{t.FAINT}[{t.UFAINT}{t.REFCOL}^{key}'
+                      f'{t.DEF}{t.FAINT}]:{t.UFAINT} {content}{t.DEF}')
+
+        for key, url in references.items():
+            self.emit(f'{t.DEF}{t.FAINT}[{t.UFAINT}{t.REFCOL}{key}'
+                      f'{t.DEF}{t.FAINT}]:{t.UFAINT} {t.LNCOL}{url}{t.DEF}')
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Linter mode — output reformatted markdown
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class LinterRenderer(Renderer):
+    """Renderer that outputs reformatted markdown text (no ANSI)."""
+
+    def __init__(self, cfg: Config):
+        super().__init__(cfg)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Main
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def read_input(cfg: Config) -> str:
+    """Read input from files or stdin."""
+    if not cfg.files or cfg.files[0] == '-':
+        return sys.stdin.read()
+
+    texts = []
+    for filepath in cfg.files:
+        if not os.path.isfile(filepath):
+            print(f'"{filepath}": no such file.', file=sys.stderr)
+            continue
+        if cfg.in_place and os.path.islink(filepath):
+            print(f'"{filepath}": -i does not accept symlinks.', file=sys.stderr)
+            continue
+        if cfg.show_names:
+            print(f'<{filepath}>', file=sys.stderr)
+
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                texts.append(f.read())
+        except OSError as e:
+            print(f'Error reading {filepath}: {e}', file=sys.stderr)
+
+    return '\n\n'.join(texts)
+
+
+def main():
+    cfg = parse_args(sys.argv)
+
+    # Handle -i (in-place editing)
+    if cfg.in_place and cfg.files:
+        for filepath in cfg.files:
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except OSError as e:
+                print(f'Error: {e}', file=sys.stderr)
+                continue
+
+            doc = parse_markdown(content, cfg)
+            renderer = LinterRenderer(cfg)
+            output = renderer.render(doc)
+
+            import tempfile
+            tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False,
+                                               encoding='utf-8')
+            try:
+                tmp.write(output)
+                tmp.close()
+                os.replace(tmp.name, filepath)
+            except OSError as e:
+                print(f'Error writing {filepath}: {e}', file=sys.stderr)
+                os.unlink(tmp.name)
+        return
+
+    # Set terminal title
+    if sys.stdout.isatty() and cfg.files and cfg.files[0] != '-':
+        try:
+            abs_path = os.path.realpath(cfg.files[0])
+            rel_path = os.path.relpath(cfg.files[0])
+            the_path = abs_path if len(abs_path) <= len(rel_path) else rel_path
+            sys.stdout.write(f'\033]2;pmd {the_path}\033\\')
+            sys.stdout.flush()
+        except (OSError, ValueError):
+            pass
+
+    content = read_input(cfg)
+    if not content:
+        return
+
+    doc = parse_markdown(content, cfg)
+
+    if cfg.lint_mode:
+        renderer = LinterRenderer(cfg)
+    else:
+        renderer = Renderer(cfg)
+        # Set file path for OSC8 link generation
+        if cfg.files and cfg.files[0] != '-':
+            renderer._file_path = os.path.realpath(cfg.files[0])
+
+    output = renderer.render(doc)
+    sys.stdout.write(output)
+    sys.stdout.flush()
+
+    # Process remaining files
+    if len(cfg.files) > 1:
+        for filepath in cfg.files[1:]:
+            print('', file=sys.stderr)
+
+
+if __name__ == '__main__':
+    main()
+
+
+# {{{1 Licence
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; version 3 or later of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, see
+# https://www.gnu.org/licenses/licenses/gpl-3.0.en.html.
