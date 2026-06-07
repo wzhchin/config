@@ -43,7 +43,7 @@ Write `README.md` in the target folder following this template:
 
 ## 做了什么 (What)
 
-<Summarize what was done in this session. Be specific: list operations, changes, outputs produced. Use bullet points if multiple items.>
+<Summarize what was done in this session. Be specific: list operations, changes, outputs produced. Use bullet points if multiple items. When a step involved running a command, include the command in a `bash code block` along with key output lines and a brief explanation of what the output means.>
 
 ## 为什么做 (Why)
 
@@ -51,7 +51,7 @@ Write `README.md` in the target folder following this template:
 
 ## 怎么做的 (How)
 
-<Key steps, commands, and methods used. Include important commands or code snippets. Omit this section if straightforward and covered by "What".>
+<Key investigative or troubleshooting commands, not all commands. For each command: show it in a `bash code block`, include key output lines, and explain what the output tells us. Omit this section if straightforward and covered by "What".>
 
 ## 关键决策
 
@@ -59,7 +59,7 @@ Write `README.md` in the target folder following this template:
 
 ## 遇到的问题
 
-<Problems encountered and how they were resolved. Omit if none.>
+<Problems encountered and how they were resolved. When a problem was diagnosed or fixed via command, include the command in a `bash code block` with key output and explanation. Omit if none.>
 
 ## 后续 TODO
 
