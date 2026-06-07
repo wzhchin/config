@@ -778,6 +778,7 @@ def parse_markdown(text: str, cfg: Config) -> Document:
     text = re.sub(r'[\x07\x0c\x0b]', '', text)
     text = ESC_RE.sub('', text)
     text = text.replace('\t', '    ')
+    text = text.replace('✅', f'{sgr(30, 42)} ✓ {sgr(39, 49)}').replace('❌', f'{sgr(30, 41)} ✗ {sgr(39, 49)}')
 
     lines = text.split('\n')
     # Remove trailing empty line if present
@@ -1661,19 +1662,22 @@ class Renderer:
         col_widths = list(table.col_widths)
         n_cols = len(col_widths)
         align = table.align
-        # Total width: sum(col_widths) + 2*n_cols (padding) + (n_cols+1) (borders)
-        total_w = sum(col_widths) + 2 * n_cols + (n_cols + 1)
+        # smd tables have 3-space prefix (bonus_sp + indent prefix)
+        tbl_prefix = '   '
+        prefix_w = len(tbl_prefix)
+
+        # Total width: prefix + sum(col_widths) + 2*n_cols (padding) + (n_cols+1) (borders)
+        border_w = n_cols + 1  # │ characters
+        pad_w = 2 * n_cols     # 1 space each side of each cell
+        total_w = prefix_w + sum(col_widths) + pad_w + border_w
 
         # If table is too wide, shrink columns to fit terminal
         if total_w > cfg.width:
-            available = cfg.width - 2 * n_cols - (n_cols + 1)
+            available = cfg.width - prefix_w - pad_w - border_w
             if available < n_cols:
                 available = n_cols
             scale = available / sum(col_widths) if sum(col_widths) > 0 else 1
             col_widths = [max(4, int(w * scale)) for w in col_widths]
-
-        # smd tables have 3-space prefix (bonus_sp + indent prefix)
-        tbl_prefix = '   '
 
         # Helper to emit a content line with per-cell │ borders
         def emit_row(grid_line):
@@ -1694,7 +1698,9 @@ class Renderer:
         self.emit(f'{tbl_prefix}{acol}{sep_border}{aecol}')
 
         # Body rows
-        for row in table.rows:
+        row_border = self._table_border('├', '┼', '┤', '─', col_widths)
+        for ri, row in enumerate(table.rows):
+            self.emit(f'{tbl_prefix}{acol}{row_border}{aecol}')
             for grid_line in self._build_row_grid(row.cells, col_widths, align):
                 emit_row(grid_line)
 
