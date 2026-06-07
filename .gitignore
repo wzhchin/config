@@ -5,3 +5,6 @@ fcitx5/config/profile
 
 # claude
 settings.local.json
+
+# python
+__pycache__
