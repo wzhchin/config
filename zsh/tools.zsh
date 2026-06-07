@@ -6,8 +6,6 @@ export GOPROXY=https://proxy.golang.com.cn,direct
 
 ## Python Settings
 export PIP_CACHE_DIR=$CHIN_CACHE_DIR/.pip-cache
-alias load-conda='[ -f /opt/miniconda3/etc/profile.d/conda.sh ] && source /opt/miniconda3/etc/profile.d/conda.sh'
-
 
 ## Node Settings
 # pnpm
@@ -73,8 +71,9 @@ alias rm="printf 'Avoid using rm, use rmi or rmi -f instead.\n'"
 alias mpa='mpv --no-video'
 alias aria2n='aria2c --no-conf=true -j4 -x4 -s4'
 alias fgt="unset HISTFILE"
-alias pd='cd "$CHIN_PG_DIR"'
 alias mkp='mkdir -p'
+alias less="less -R" 
+
 mkpp() {
   local -a args 
     while [ "$#" -gt 0 ]; do
