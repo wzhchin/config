@@ -37,7 +37,11 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-export ANTHROPIC_BASE_URL="http://localhost:8317"
+if ping l25.lc -c 1 &>/dev/null; then
+  export ANTHROPIC_BASE_URL="http://l25.lc:8317"
+else
+  export ANTHROPIC_BASE_URL="http://localhost:8317"
+fi
 export ANTHROPIC_AUTH_TOKEN="sk-cpa"
 
 claude "${PASSTHROUGH_ARGS[@]}"
