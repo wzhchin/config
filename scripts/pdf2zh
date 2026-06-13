@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+
+OPENAI_BASE_URL=http://localhost:8317/v1 \
+  OPENAI_API_KEY=sk-cpa \
+  OPENAI_MODEL=glm-5.1 \
+  uvx pdf2zh -s openai "$@"

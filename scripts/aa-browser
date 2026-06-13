@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+export HOME=$HOME/.ai-home
+export XDG_CONFIG_HOME="$HOME/.config"
+
+mkdir -p "$HOME"
+export HTTP_PROXY=http://127.0.0.1:7890; export HTTPS_PROXY=http://127.0.0.1:7890
+
+chromium --enable-features=UseOzonePlatform --ozone-platform=wayland --remote-debugging-port=9222 "$@" &!

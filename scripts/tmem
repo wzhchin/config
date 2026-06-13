@@ -1,0 +1,13 @@
+#!/bin/sh
+# Top 10 memory-consuming processes
+# Usage: tmem
+
+ps aux --sort=-%mem | awk 'NR==1 || NR<=11 {
+  if (NR == 1) { next }
+  pid = $2
+  cmd = substr($0, index($0,$11))
+  rss = $6
+  mb = rss / 1024
+  pct = $4
+  printf "%-8s %6.1f MB  %5s%%  %s\n", pid, mb, pct, cmd
+}'

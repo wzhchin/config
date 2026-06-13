@@ -4,9 +4,9 @@ set -euo pipefail
 _use_deepseek() {
   export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
 #  export ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY"
-  export ANTHROPIC_MODEL='deepseek-v4-pro'
+  export ANTHROPIC_MODEL='deepseek-v4-flash'
   export ANTHROPIC_DEFAULT_OPUS_MODEL='deepseek-v4-pro'
-  export ANTHROPIC_DEFAULT_SONNET_MODEL='deepseek-v4-pro'
+  export ANTHROPIC_DEFAULT_SONNET_MODEL='deepseek-v4-flash'
   export ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash
   export CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash
   export CLAUDE_CODE_EFFORT_LEVEL=max
@@ -15,9 +15,9 @@ _use_deepseek() {
 _use_glm() {
   export ANTHROPIC_BASE_URL="https://open.bigmodel.cn/api/anthropic"
 #  export ANTHROPIC_AUTH_TOKEN="$GLM_API_KEY"
-  export ANTHROPIC_MODEL=glm-5.1
-  export ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.1
-  export ANTHROPIC_DEFAULT_SONNET_MODEL=glm-4.7
+  export ANTHROPIC_MODEL=glm-5.2
+  export ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.2
+  export ANTHROPIC_DEFAULT_SONNET_MODEL=glm-5.1
   export ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-4.7
   export CLAUDE_CODE_SUBAGENT_MODEL=glm-4.7
 }
