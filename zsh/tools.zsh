@@ -55,6 +55,29 @@ j() {
     unset folder option
 }
 
+jl() {
+    local folder option
+    option="$(ls -at | fzf -q "$1" --reverse --height 40% | sed -r 's/\r?\n?$//g')"
+
+    if [[ -z "$option" ]]; then
+        return 0
+    fi
+
+    if [ -d "${option}" ]; then
+        folder="$option"
+    elif [ -e "${option}" ]; then
+        printf "Open its parent dir: \n\t%s\033[31m/%s\033[0m\n" "${option%/*}" "${option##*/}"
+        folder="${option%/*}"
+    else
+        printf "$option is not existed.\n"
+        return
+    fi
+
+    cd "$folder"
+    unset folder option
+}
+
+
 [ -f /usr/share/fzf/key-bindings.zsh ] && . /usr/share/fzf/key-bindings.zsh
 
 
@@ -67,7 +90,7 @@ alias ls='ls --color=auto'
 alias rga="rg --no-ignore-files --no-ignore --hidden -i"
 alias fda='NO_COLOR=1 fd -I --hidden'
 alias rmi='/usr/bin/rm -I -r'
-alias rm="printf 'Avoid using rm, use rmi or rmi -f instead.\n'"
+alias rm="printf 'Avoid using rm, use rmi(rm -I -r alias) -f instead.\n'"
 alias mpa='mpv --no-video'
 alias aria2n='aria2c --no-conf=true -j4 -x4 -s4'
 alias fgt="unset HISTFILE"
