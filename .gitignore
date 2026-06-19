@@ -8,3 +8,10 @@ settings.local.json
 
 # python
 __pycache__
+
+# emacs-nox-minimal: makepkg 会自动下载源码 tarball，本地构建产物不入库
+emacs/emacs-nox-minimal/*.tar.xz
+emacs/emacs-nox-minimal/*.tar.xz.sig
+emacs/emacs-nox-minimal/*.pkg.tar.*
+emacs/emacs-nox-minimal/src/
+emacs/emacs-nox-minimal/pkg/
