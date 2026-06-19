@@ -96,6 +96,7 @@ alias aria2n='aria2c --no-conf=true -j4 -x4 -s4'
 alias fgt="unset HISTFILE"
 alias mkp='mkdir -p'
 alias less="less -R" 
+alias ap="realpath -s"
 
 mkpp() {
   local -a args 
