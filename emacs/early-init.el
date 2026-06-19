@@ -1,11 +1,8 @@
 ;; -*- lexical-binding: t; -*-
 
-(when (boundp '+saved-load-path-during-dump)
-  (message "Starting from a dump file...")
-  (setq evil-want-keybinding nil)
-  (setq load-path +saved-load-path-during-dump))
-
-;; Restore dumped load-path
+;; 注: 从 pdump 启动时 early-init.el 的 load-time 代码不会重新执行
+;; (只有 after-pdump-load-hook 会跑), 所以 load-path 的恢复不能放这里 ——
+;; 见 init.el 里的 after-pdump-load-hook 注册。
 (menu-bar-mode -1)
 ;; (scroll-bar-mode -1 ) 
 
