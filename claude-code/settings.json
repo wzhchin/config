@@ -64,15 +64,6 @@
             "command": "$HOME/.claude/hooks/notify.sh dismiss"
           }
         ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/home/chin/.claude/hooks/rtk-rewrite.sh"
-          }
-        ]
       }
     ]
   },
