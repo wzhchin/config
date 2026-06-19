@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+cat /etc/os-release | grep 'Arch Linux' &>/dev/null || {
+  echo "Not Arch"
+exit 1
+}
+
+uvx --python 3.14 pikaur "$@"
