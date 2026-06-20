@@ -6,4 +6,4 @@ codex -c model=glm-5.2 \
   -c model_provider=cpa \
   -c model_providers.cpa.name=cpa  \
   -c model_providers.cpa.base_url=http://l25.lc:8317/v1 \
-  -c model_providers.cpa.env_key="OPENAI_API_KEY"
+  -c model_providers.cpa.env_key="OPENAI_API_KEY" "$@"
