@@ -4,9 +4,14 @@
 
 pdump() {
     command emacs --batch \
-      --eval '(package-initialize)' \
-      -l ~/.emacs.d/init.el \
-      --eval '(chin/dump)' 
+            --eval '(package-initialize)' \
+            -l ~/.emacs.d/init.el \
+            --eval '(chin/dump)'
 }
+
+if [ "$1" = "--dump" ]; then
+    pdump
+    exit
+fi
 
 emacs --dump-file="$HOME/.emacs.d/emacs.pdmp" "$@"

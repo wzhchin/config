@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-yt-dlp -x --audio-format mp3 "$@"
+uvx yt-dlp -x --audio-format mp3 "$@"
