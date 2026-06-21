@@ -59,27 +59,11 @@
          segment))
      path-segments "/")))
 
-(when (boundp '+saved-load-path-during-dump)
-  (global-font-lock-mode +1)
-  (transient-mark-mode +1))
-
-(when (display-graphic-p)
-  (modify-all-frames-parameters
-   '((right-divider-width . 0)
-     (internal-border-width . 15)))
-
-  (dolist (face '(window-divider
-                  window-divider-first-pixel
-                  window-divider-last-pixel))
-    (face-spec-reset-face face)
-    (set-face-foreground face (face-attribute 'default :background)))
-  (set-face-background 'fringe (face-attribute 'default :background))
-  (custom-set-faces
-   '(mode-line ((t (:background "#c8c8c8" :foreground "#000000" :slant italic :box (:line-width 5 :color "#c8c8c8")))))
-   '(mode-line-inactive ((t (:background "#e6e6e6" :foreground "#000000" :slant italic :box (:line-width 5 :color
-                                                                                                         "#e6e6e6"))))))
-  (ignore-errors (set-frame-font "Sarasa Mono SC 12"))
-  )
+;; 注: 这两个 mode 必须无条件开启 —— pdump 启动时 load-time 代码不重跑,
+;; 只有 dump 构建时开启过、状态烤进镜像, 启动后才生效。若包在某个 dump
+;; 时才绑定的变量 guard 里, require 时 guard 恒为 nil, 永远不会开启。
+(global-font-lock-mode +1)
+(transient-mark-mode +1)
 
 ;; mode-line settings
 (use-package minions

@@ -30,7 +30,14 @@
 (add-hook 'after-pdump-load-hook
           (lambda ()
             (when (boundp '+saved-load-path-during-dump)
-              (setq load-path +saved-load-path-during-dump))))
+              (setq load-path +saved-load-path-during-dump)
+              ;; evil 的 ESC→escape 翻译装在 terminal parameter 上, dump 时装的是
+              ;; dummy terminal, 新进程的 terminal 没有它; 而 evil-mode 启用这段
+              ;; 属 load-time 代码不重跑。这里 toggle 一次 evil-esc-mode 为当前
+              ;; terminal 重装 esc 过滤, 否则 ESC 跳不回 normal。
+              (when (fboundp 'evil-esc-mode)
+                (evil-esc-mode -1)
+                (evil-esc-mode 1)))))
 
 (when chin/is-windows
   ;; TODO remove this
