@@ -1,9 +1,20 @@
 ;;; Icons  -*- lexical-binding: t; -*-
 ;;; stealed from https://github.com/casouri/lunarymacs/blob/f01edd6b148a1ce89e3cbad90a2ed6fd015e8279/star/deprecated/tool-bar.el
 
-(add-to-list
- 'image-load-path
- (expand-file-name "lib/images" (file-name-directory (chin/this-true-file))))
+;; 此文件与内置 tool-bar.el 同名，且 lisp/ 在 load-path 最前，会 shadow 掉内置
+;; 版本。终端(nox)下完全用不到 tool-bar 图标栏，且下面的 GUI 代码引用了未定义的
+;; chin/this-true-file；若在终端被加载(package.el 内部 require 'tool-bar 时会触发)
+;; 会抛 void-function 打断 init。终端下直接加载内置 tool-bar.elc(用绝对路径绕过
+;; load-path 避免递归命中本文件)，它定义了 tool-bar-local-item-from-menu 等并
+;; provide 'tool-bar，满足 require 契约。GUI 下才走下面的图标定制逻辑。
+(if (not (display-graphic-p))
+    ;; data-directory = .../<ver>/etc/，../lisp/ 即内置 lisp 目录(随版本号自适应)。
+    ;; nosuffix=t: FILE 已带 .elc，避免 load 再补后缀找 tool-bar.el 命中本文件。
+    (load (expand-file-name "../lisp/tool-bar.elc" data-directory) nil t)
+
+  (add-to-list
+   'image-load-path
+   (expand-file-name "lib/images" (file-name-directory (chin/this-true-file))))
 
 ;;; Global map
 
@@ -165,5 +176,7 @@
                                         :rtl "left-arrow" :vert-only t
                                         :image (find-image '((:type svg :file "tm_fwd-arrow.svg"))))
          map))
+
+  (provide 'tool-bar))
 
 

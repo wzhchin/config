@@ -1,16 +1,10 @@
 #!/usr/bin/env bash
 
-
-
-pdump() {
+if [ "$1" = "--dump" ]; then
     command emacs --batch \
             --eval '(package-initialize)' \
             -l ~/.emacs.d/init.el \
             --eval '(chin/dump)'
-}
-
-if [ "$1" = "--dump" ]; then
-    pdump
     exit
 fi
 

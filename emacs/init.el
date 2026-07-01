@@ -83,6 +83,13 @@
   (setq +saved-load-path-during-dump load-path)
   ;; 活不过 dump 的运行时状态先清掉, 避免 dump 进脏数据。
   (when (fboundp 'garbage-collect) (garbage-collect))
+  ;; pdump 不支持 dump overlay (会报 "dumping overlays is not yet implemented"),
+  ;; 某些包会在 buffer 留下空 overlay (如 scratch 上范围塌缩为 0 的死 overlay),
+  ;; 只要存在 overlay 就会让整个 dump 失败, 这里在 dump 前统一清掉所有 buffer 的 overlay。
+  (dolist (buf (buffer-list))
+    (with-current-buffer buf
+      (dolist (ov (overlays-in (point-min) (point-max)))
+        (delete-overlay ov))))
   (dump-emacs-portable chin/pdump-file)
   (message "Dumped to %s (%d bytes) — 启动: emacs --dump-file=%s"
            chin/pdump-file
