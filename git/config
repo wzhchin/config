@@ -98,6 +98,8 @@ grep-all = !git rev-list --all | xargs git grep
 
 rab = "!f() {   branch=$(git rev-parse --abbrev-ref HEAD);   for remote in $(git remote); do     upstream=\"refs/remotes/$remote/$branch\";     if git rev-parse --verify --quiet \"$upstream\" >/dev/null 2>&1; then       ahead=$(git rev-list --count \"$upstream..HEAD\");       behind=$(git rev-list --count \"HEAD..$upstream\");    url=$(git remote get-url \"$remote\");   echo \"$remote: A $ahead, B $behind $url\";     fi;   done; }; f"
 
+review = !tuicr
+
 [color]
 ui = true
 diff = auto
