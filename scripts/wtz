@@ -1,0 +1,282 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+msg()   { printf "\033[32m==> %s %s ~ \033[0m%s\n" "$(date +%H:%M:%S)" "$*"; }
+warn()  { printf "\033[33m==> %s %s ~ %s\033[0m\n" "$(date +%H:%M:%S)" "$*"; }
+error() { printf "\033[31m==> %s %s ~ %s\033[0m\n" "$(date +%H:%M:%S)" "$*"; }
+die()   { error "$@"; exit 1; }
+
+# Each city carries its UTC offset in MINUTES as a constant — so a single
+# date(1) call for "now" is enough and everything else is bash arithmetic.
+# Format: "City|offset_minutes"
+# Offsets reflect standard time + the prevailing DST rule of the place, so
+# the printed clock matches what the city actually observes right now.
+
+readonly GREEN=$'\033[32m'
+readonly DIM=$'\033[2m'
+readonly BOLD=$'\033[1m'
+readonly CEND=$'\033[0m'
+
+# Per-region color for the city name.
+declare -A REGION_COLOR=(
+    [africa]=$'\033[33m'     # yellow
+    [americas]=$'\033[35m'   # magenta
+    [asia]=$'\033[32m'       # green
+    [europe]=$'\033[36m'     # cyan
+    [oceania]=$'\033[34m'    # blue
+)
+
+CITY_FILTER=""
+SHOW_UTC=false
+
+_africa=(
+    "Lagos|60"            # WAT  +01:00
+    "Cairo|120"           # EET  +02:00
+    "Johannesburg|120"    # SAST +02:00
+    "Nairobi|180"         # EAT  +03:00
+    "Casablanca|60"       # WEST +01:00 (DST applies)
+)
+
+_americas=(
+    "New York|-240"       # EDT  -04:00
+    "Toronto|-240"        # EDT  -04:00
+    "Los Angeles|-420"    # PDT  -07:00
+    "Chicago|-300"        # CDT  -05:00
+    "Mexico City|-360"    # CST  -06:00
+    "Bogota|-300"         # COT  -05:00
+    "Sao Paulo|-180"      # BRT  -03:00
+    "Buenos Aires|-180"   # ART  -03:00
+    "Vancouver|-420"      # PDT  -07:00
+    "Honolulu|-600"       # HST  -10:00
+    "Anchorage|-480"      # AKDT -08:00
+)
+
+_asia=(
+    "Beijing|480"         # CST  +08:00
+    "Hong Kong|480"       # HKT  +08:00
+    "Tokyo|540"           # JST  +09:00
+    "Seoul|540"           # KST  +09:00
+    "Singapore|480"       # SGT  +08:00
+    "Bangkok|420"         # ICT  +07:00
+    "Jakarta|420"         # WIB  +07:00
+    "Kuala Lumpur|480"    # MYT  +08:00
+    "Taipei|480"          # CST  +08:00
+    "Manila|480"          # PHT  +08:00
+    "Ho Chi Minh|420"     # ICT  +07:00
+    "Kolkata|330"         # IST  +05:30
+    "Mumbai|330"          # IST  +05:30
+    "Delhi|330"           # IST  +05:30
+    "Karachi|300"         # PKT  +05:00
+    "Dhaka|360"           # BST  +06:00
+    "Dubai|240"           # GST  +04:00
+    "Tehran|210"          # IRDT +03:30 (DST applies)
+    "Bangalore|330"       # IST  +05:30
+)
+
+_europe=(
+    "London|60"           # BST  +01:00 (DST applies)
+    "Paris|120"           # CEST +02:00 (DST applies)
+    "Berlin|120"          # CEST +02:00 (DST applies)
+    "Madrid|120"          # CEST +02:00 (DST applies)
+    "Rome|120"            # CEST +02:00 (DST applies)
+    "Amsterdam|120"       # CEST +02:00 (DST applies)
+    "Stockholm|120"       # CEST +02:00 (DST applies)
+    "Moscow|180"          # MSK  +03:00
+    "Istanbul|180"        # TRT  +03:00
+    "Athens|180"          # EEST +03:00 (DST applies)
+)
+
+_oceania=(
+    "Sydney|600"          # AEST +10:00
+    "Melbourne|600"       # AEST +10:00
+    "Perth|480"           # AWST +08:00
+    "Auckland|720"        # NZST +12:00
+    "Fiji|720"            # FJT  +12:00
+)
+
+_regions() {
+    printf '%s\n' africa americas asia europe oceania
+}
+
+_print_all() {
+    # Two date(1) calls total: current UTC fields + the system offset. Every
+    # per-city clock is then pure bash arithmetic on the offset minutes.
+    local now
+    now=$(date -u +"%s %Y %m %d %H %M %S")
+    # fields: epoch y m d H M S  (UTC)
+    local local_off_raw
+    local_off_raw=$(date +%z)
+
+    local sign="+"
+    [[ $local_off_raw == -* ]] && sign="-"
+    local local_off=$(( 10#${local_off_raw:1:2} * 60 + 10#${local_off_raw:3:2} ))
+    [[ $sign == - ]] && local_off=$(( -local_off ))
+
+    # Day-roll of the system timezone vs the UTC calendar day.
+    # shellcheck disable=SC2086
+    set -- $now
+    local u_H="$5" u_M="$6"
+    local local_total=$(( u_H * 60 + u_M + local_off ))
+    local local_roll=0
+    if (( local_total < 0 )); then
+        local_roll=$(( (local_total - 1439) / 1440 ))
+    elif (( local_total >= 1440 )); then
+        local_roll=$(( local_total / 1440 ))
+    fi
+
+    declare -A buckets=()   # key -> colored city names joined by ", "
+    declare -A sortkey=()   # key -> numeric sort value
+
+    local low_filter=""
+    [[ -n $CITY_FILTER ]] && low_filter="${CITY_FILTER,,}"
+
+    local region entry city off_min color
+    for region in $(_regions); do
+        local -n entries="_$region"
+        color="${REGION_COLOR[$region]}"
+        for entry in "${entries[@]}"; do
+            city="${entry%%|*}"
+            off_min="${entry#*|}"
+            if [[ -n $low_filter && "${city,,}" != *"$low_filter"* ]]; then
+                continue
+            fi
+            _bucket_city "$city" "$off_min" "$now" "$local_roll" "$color" buckets sortkey
+        done
+    done
+
+    local sorted_keys
+    sorted_keys=$(for k in "${!sortkey[@]}"; do
+        printf '%s\t%s\n' "${sortkey[$k]}" "$k"
+    done | sort -n | cut -f2-)
+    local key time_part meta_part
+    while IFS= read -r key; do
+        [[ -z $key ]] && continue
+        time_part="${key%%|*}"
+        meta_part="${key#*|}"
+        printf '  %s%s%s (%s %s%s%s)\n' \
+            "$BOLD" "$time_part" "$CEND" \
+            "${buckets[$key]}" \
+            "$DIM" "$meta_part" "$CEND"
+    done <<<"$sorted_keys"
+
+    printf '\n'
+    _print_legend
+}
+
+_bucket_city() {
+    # Compute a city's wall clock from the UTC "now" fields + offset, then
+    # fold it into the shared buckets/sortkey (passed by nameref).
+    local city="$1" off_min="$2" now="$3" local_roll="$4" color="$5"
+    local -n _buckets="$6"
+    local -n _sortkey="$7"
+
+    # Parse UTC fields.
+    # shellcheck disable=SC2086
+    set -- $now
+    local u_epoch="$1" u_y="$2" u_m="$3" u_H="$5" u_M="$6" u_S="$7"
+
+    # Minutes from UTC calendar-day midnight + the city offset; split into an
+    # in-day minute count and a day roll vs that UTC day.
+    local total_min=$(( u_H * 60 + u_M + off_min ))
+    local day_roll=0
+    if (( total_min < 0 )); then
+        day_roll=$(( (total_min - 1439) / 1440 ))   # floor division -> -1
+        total_min=$(( total_min - day_roll * 1440 ))
+    elif (( total_min >= 1440 )); then
+        day_roll=$(( total_min / 1440 ))
+        total_min=$(( total_min % 1440 ))
+    fi
+
+    local hh=$(( total_min / 60 ))
+    local mm=$(( total_min % 60 ))
+
+    # Day delta vs the system timezone's calendar day.
+    local city_day_delta=$(( day_roll - local_roll ))
+    local day_suffix=""
+    if (( city_day_delta > 0 )); then
+        day_suffix=" +${city_day_delta}d"
+    elif (( city_day_delta < 0 )); then
+        day_suffix=" ${city_day_delta}d"
+    fi
+
+    # Offset string "+08:00".
+    local abs_off=$off_min ofsign="+"
+    if (( abs_off < 0 )); then
+        ofsign="-"
+        abs_off=$(( -abs_off ))
+    fi
+    local off_str
+    printf -v off_str '%s%02d:%02d' "$ofsign" $(( abs_off / 60 )) $(( abs_off % 60 ))
+
+    # Display string: HH:MM, or full date with weekday/seconds in -u mode.
+    local time_str
+    if $SHOW_UTC; then
+        # date(1) once for the city's calendar date + weekday (handles month
+        # length and locale weekday name); time-of-day is our arithmetic.
+        local city_epoch=$(( u_epoch + off_min * 60 ))
+        local wd city_date
+        wd=$(date -u -d "@$city_epoch" +%a)
+        city_date=$(date -u -d "@$city_epoch" +%Y-%m-%d)
+        printf -v time_str '%s %02d:%02d:%02d %s' \
+            "$city_date" "$hh" "$mm" "$u_S" "$wd"
+    else
+        printf -v time_str '%02d:%02d' "$hh" "$mm"
+    fi
+
+    local key="${time_str}|${off_str}${day_suffix}"
+    local sortval=$(( city_day_delta * 86400 + hh * 3600 + mm * 60 ))
+    local cell="${color}${city}${CEND}"
+    if [[ -n ${_buckets[$key]:-} ]]; then
+        _buckets[$key]+=", ${cell}"
+    else
+        _buckets[$key]="$cell"
+        _sortkey[$key]="$sortval"
+    fi
+}
+
+_print_legend() {
+    local region parts=()
+    for region in $(_regions); do
+        parts+=("${REGION_COLOR[$region]}■${CEND} ${region}")
+    done
+    local IFS=', '
+    printf '  %s\n' "${parts[*]}"
+}
+
+_show_help() {
+    cat <<EOF
+Usage: wtz [options] [CITY]
+
+Print current time across world timezones. Cities at the same moment share a
+line; each city is colored by its region. +1d/-1d marks a different calendar
+day from the system timezone.
+
+Options:
+  -u, --utc   Show full date with weekday and seconds
+  -h, --help  Show this help message
+
+Positional CITY is a case-insensitive substring filter on city names.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+    -u | --utc)
+        SHOW_UTC=true
+        ;;
+    -h | --help)
+        _show_help
+        exit 0
+        ;;
+    -*)
+        die "unknown option: $1 (try -h)"
+        ;;
+    *)
+        CITY_FILTER="$1"
+        ;;
+    esac
+    shift
+done
+
+_print_all
