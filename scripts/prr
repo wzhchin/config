@@ -1,0 +1,266 @@
+#!/usr/bin/env python3
+"""PRR: a tiny recording HTTP/SSE reverse proxy, using only the stdlib."""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import http.client
+import sys
+import uuid
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import SplitResult, urlsplit, urlunsplit
+
+
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 8765
+COPY_BUFFER_SIZE = 64 * 1024
+HOP_BY_HOP = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+}
+
+
+def encode_url(url: str) -> str:
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("URL must be an absolute http:// or https:// URL")
+    return base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
+
+
+def decode_url(token: str) -> str:
+    try:
+        padded = token + "=" * (-len(token) % 4)
+        url = base64.urlsafe_b64decode(padded.encode()).decode()
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise ValueError("invalid encoded URL") from exc
+    # Validate decoded input too; urlsafe_b64decode is deliberately permissive.
+    encode_url(url)
+    return url
+
+
+def build_target(encoded_url: str, suffix: str, incoming_query: str) -> SplitResult:
+    target = urlsplit(decode_url(encoded_url))
+    path = target.path or "/"
+    if suffix:
+        path = path.rstrip("/") + "/" + suffix.lstrip("/")
+    query = "&".join(part for part in (target.query, incoming_query) if part)
+    return target._replace(path=path, query=query, fragment="")
+
+
+def timestamped_stem() -> str:
+    now = datetime.now().strftime("%Y%m-%d-%H%M%S")
+    return f"{now}-{uuid.uuid4()}"
+
+
+def write_message_head(file, first_line: str, headers) -> None:
+    file.write((first_line + "\r\n").encode("utf-8", "surrogateescape"))
+    for name, value in headers:
+        line = f"{name}: {value}\r\n"
+        file.write(line.encode("utf-8", "surrogateescape"))
+    file.write(b"\r\n")
+
+
+def connection_tokens(headers) -> set[str]:
+    result: set[str] = set()
+    for value in headers.get_all("Connection", []):
+        result.update(item.strip().lower() for item in value.split(","))
+    return result
+
+
+class RecordingServer(ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+    def __init__(self, address, log_dir: Path, record_response: bool):
+        super().__init__(address, ProxyHandler)
+        self.log_dir = log_dir
+        self.record_response = record_response
+
+
+class ProxyHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    server_version = "prr/1.0"
+
+    def _read_request_body(self) -> bytes:
+        transfer_encoding = self.headers.get("Transfer-Encoding", "").lower()
+        if "chunked" in transfer_encoding:
+            chunks = bytearray()
+            while True:
+                size_line = self.rfile.readline()
+                if not size_line:
+                    raise ValueError("unexpected EOF in chunked request")
+                size = int(size_line.split(b";", 1)[0].strip(), 16)
+                if size == 0:
+                    while self.rfile.readline() not in {b"\r\n", b"\n", b""}:
+                        pass
+                    break
+                chunks.extend(self.rfile.read(size))
+                if self.rfile.read(2) != b"\r\n":
+                    raise ValueError("malformed chunked request")
+            return bytes(chunks)
+        length = int(self.headers.get("Content-Length", "0"))
+        return self.rfile.read(length) if length else b""
+
+    def _proxy(self) -> None:
+        parsed_incoming = urlsplit(self.path)
+        route = parsed_incoming.path.lstrip("/")
+        token, separator, suffix = route.partition("/")
+        if not token:
+            self.send_error(404, "expected /<encoded-url>")
+            return
+
+        try:
+            target = build_target(token, suffix if separator else "", parsed_incoming.query)
+            body = self._read_request_body()
+        except (ValueError, UnicodeError) as exc:
+            self.send_error(400, str(exc))
+            return
+
+        stem = timestamped_stem()
+        req_path = self.server.log_dir / f"{stem}.req"
+        rsp_path = self.server.log_dir / f"{stem}.rsp"
+        target_url = urlunsplit(target)
+
+        with req_path.open("xb") as req_file:
+            write_message_head(
+                req_file,
+                f"{self.command} {target_url} {self.request_version}",
+                self.headers.items(),
+            )
+            req_file.write(body)
+
+        blocked = HOP_BY_HOP | connection_tokens(self.headers)
+        outbound_headers = {
+            name: value
+            for name, value in self.headers.items()
+            if name.lower() not in blocked and name.lower() not in {"host", "content-length"}
+        }
+        if body:
+            outbound_headers["Content-Length"] = str(len(body))
+
+        conn_class = http.client.HTTPSConnection if target.scheme == "https" else http.client.HTTPConnection
+        port = target.port or (443 if target.scheme == "https" else 80)
+        # Bound connection establishment, then allow indefinitely long SSE reads.
+        conn = conn_class(target.hostname, port, timeout=30)
+        response_file = None
+        response_started = False
+        try:
+            request_target = urlunsplit(("", "", target.path or "/", target.query, ""))
+            conn.request(self.command, request_target, body=body, headers=outbound_headers)
+            upstream = conn.getresponse()
+            if conn.sock is not None:
+                conn.sock.settimeout(None)
+
+            if self.server.record_response:
+                response_file = rsp_path.open("xb")
+                write_message_head(
+                    response_file,
+                    f"HTTP/{upstream.version // 10}.{upstream.version % 10} {upstream.status} {upstream.reason}",
+                    upstream.getheaders(),
+                )
+                response_file.flush()
+
+            upstream_headers = upstream.getheaders()
+            upstream_connection_tokens = {
+                token.strip().lower()
+                for name, value in upstream_headers
+                if name.lower() == "connection"
+                for token in value.split(",")
+            }
+            blocked_response = HOP_BY_HOP | upstream_connection_tokens
+            self.send_response_only(upstream.status, upstream.reason)
+            response_started = True
+            for name, value in upstream_headers:
+                if name.lower() not in blocked_response:
+                    self.send_header(name, value)
+            # EOF framing lets SSE and unknown-length responses stream immediately.
+            if not any(name.lower() == "content-length" for name, _ in upstream_headers):
+                self.send_header("Connection", "close")
+                self.close_connection = True
+            self.end_headers()
+
+            while True:
+                # read1 returns currently available data instead of waiting to fill
+                # the entire buffer, which is essential for low-volume SSE streams.
+                chunk = upstream.read1(COPY_BUFFER_SIZE)
+                if not chunk:
+                    break
+                if response_file:
+                    response_file.write(chunk)
+                    response_file.flush()
+                self.wfile.write(chunk)
+                self.wfile.flush()
+        except (OSError, http.client.HTTPException) as exc:
+            if response_file is None and self.server.record_response:
+                with rsp_path.open("xb") as error_file:
+                    write_message_head(error_file, "HTTP/1.1 502 Bad Gateway", [])
+                    error_file.write((str(exc) + "\n").encode())
+            if not response_started and not self.wfile.closed:
+                try:
+                    self.send_error(502, f"upstream request failed: {exc}")
+                except OSError:
+                    pass
+        finally:
+            if response_file:
+                response_file.close()
+            conn.close()
+
+    do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = _proxy
+    do_HEAD = do_OPTIONS = do_TRACE = do_CONNECT = _proxy
+
+    def log_message(self, fmt: str, *args) -> None:
+        sys.stderr.write("%s - %s\n" % (self.log_date_time_string(), fmt % args))
+
+
+def make_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="prr", description="Record HTTP requests and responses")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    encode = subparsers.add_parser("encode", help="encode an upstream URL")
+    encode.add_argument("url")
+    encode.add_argument("--host", default=DEFAULT_HOST, help=f"proxy host (default: {DEFAULT_HOST})")
+    encode.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"proxy port (default: {DEFAULT_PORT})")
+
+    start = subparsers.add_parser("start", help="start the recording proxy")
+    start.add_argument("--log-dir", required=True, type=Path)
+    start.add_argument("--host", default=DEFAULT_HOST, help=f"listen host (default: {DEFAULT_HOST})")
+    start.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"listen port (default: {DEFAULT_PORT})")
+    start.add_argument("--no-record-response", action="store_true", help="only create .req files")
+    return parser
+
+
+def main() -> int:
+    args = make_parser().parse_args()
+    if args.command == "encode":
+        try:
+            token = encode_url(args.url)
+        except ValueError as exc:
+            print(f"prr: {exc}", file=sys.stderr)
+            return 2
+        print(f"http://{args.host}:{args.port}/{token}")
+        return 0
+
+    args.log_dir.mkdir(parents=True, exist_ok=True)
+    server = RecordingServer((args.host, args.port), args.log_dir, not args.no_record_response)
+    print(f"prr listening on http://{args.host}:{args.port}", file=sys.stderr)
+    print(f"recording to {args.log_dir.resolve()}", file=sys.stderr)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nprr stopped", file=sys.stderr)
+    finally:
+        server.server_close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

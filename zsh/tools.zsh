@@ -123,8 +123,11 @@ hpx() {
     export HTTPS_PROXY="$HTTP_PROXY"
 }
 
-# Read Private config
-chin-prvt() {
-    source "$CHIN_PRIVATE_ENV"
-    echo "$1"
+pg-today() {
+  local _d="$CHIN_PG_DIR/$(date +%y%m-%d)"
+  if [ -n "$1" ]; then
+    _d="$_d-$1"
+  fi
+  mkdir -p "$_d"
+  cd "$_d"
 }

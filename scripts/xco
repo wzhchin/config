@@ -2,7 +2,7 @@
 
 export OPENAI_API_KEY="sk-cpa"
 
-codex -c model=glm-5.2 \
+codex -c model=deepseek-v4-pro \
   -c model_provider=cpa \
   -c model_providers.cpa.name=cpa  \
   -c model_providers.cpa.base_url=http://l25.lc:8317/v1 \
