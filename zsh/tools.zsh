@@ -16,7 +16,7 @@ export PNPM_HOME="$HOME/.local/share/pnpm"
 ## Rust Settings
 export RUSTUP_DIST_SERVER="https://rsproxy.cn"
 export RUSTUP_UPDATE_ROOT="https://rsproxy.cn/rustup"
-[ -d ~/.cargo/bin ] && inspath "$HOME/.cargo/bin"
+[ -d ~/.cargo/bin ] && export PATH="$HOME/.cargo/bin:$PATH"
 
 ## Android
 export ANDROID_HOME="$HOME/Android/Sdk" 
@@ -30,7 +30,7 @@ unset ANDROID_SDK_ROOT
 ########################################
 ### Tool Settings
 ########################################
-inspath "$HOME/.local/bin"
+export PATH="$HOME/.local/bin:$PATH"
 
 ## Fzf Utils
 j() {
@@ -87,6 +87,7 @@ jl() {
 ########################################
 ## Aliases
 alias ls='ls --color=auto'
+alias grep='grep --color=auto'
 alias rga="rg --no-ignore-files --no-ignore --hidden -i"
 alias fda='NO_COLOR=1 fd -I --hidden'
 alias rmi='/usr/bin/rm -I'
@@ -114,7 +115,7 @@ mkdir -p "${args[@]}"
 
 hpx() {
     if [ -z "$HTTP_PROXY" ]; then
-        export HTTP_PROXY="http://127.0.0.1:7890"
+        export HTTP_PROXY="$CHIN_HTTP_PROXY"
         echo "set proxy to $HTTP_PROXY"
     else
         export HTTP_PROXY=
@@ -130,4 +131,8 @@ pg-today() {
   fi
   mkdir -p "$_d"
   cd "$_d"
+}
+
+check-path() {
+  echo "$PATH" | sed -z 's/:/\n/g' | awk '{arr[$0]++; print arr[$0], $0}' 
 }

@@ -169,17 +169,8 @@ fi
 
 
 ### PATH Settings
-# insert path
-inspath() {
-    if [ -d "$1" ]; then
-        case ":$PATH:" in
-            *":$1:"*) ;;
-            *) export PATH="$1:$PATH" ;;
-        esac
-    fi
-}
-inspath "$CHIN_CONFIG_DIR/scripts"
-inspath "$CHIN_PRIVATE_DIR/bin"
+export PATH="$CHIN_CONFIG_DIR/scripts:$PATH"
+export PATH="$CHIN_PRIVATE_DIR/bin:$PATH"
 
 # zprof#2
 # zprof
