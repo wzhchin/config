@@ -1,9 +1,27 @@
 #!/usr/bin/env bash
 
-export OPENAI_API_KEY="sk-cpa"
+MODEL=""
+case "$1" in
+  --glm-52)
+    MODEL="glm-5.2"
+    shift
+    ;;
+  --ds-v4-pro)
+    MODEL="deepseek-v4-pro"
+    shift
+    ;;
+esac
 
-codex -c model=deepseek-v4-pro \
-  -c model_provider=cpa \
-  -c model_providers.cpa.name=cpa  \
-  -c model_providers.cpa.base_url=http://l25.lc:8317/v1 \
-  -c model_providers.cpa.env_key="OPENAI_API_KEY" "$@"
+if [ -z "$MODEL" ]; then
+  export HTTP_PROXY="$CHIN_HTTP_PROXY"
+  export HTTPS_PROXY="$HTTP_PROXY"
+  echo "PROXY $HTTP_PROXY"
+  codex "$@"
+else
+  export OPENAI_API_KEY="sk-cpa"
+  codex -c model=deepseek-v4-pro \
+    -c model_provider=cpa \
+    -c model_providers.cpa.name=cpa \
+    -c model_providers.cpa.base_url=http://l25.lc:8317/v1 \
+    -c model_providers.cpa.env_key="OPENAI_API_KEY" "$@"
+fi
