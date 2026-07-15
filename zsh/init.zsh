@@ -170,7 +170,7 @@ fi
 
 ### PATH Settings
 export PATH="$CHIN_CONFIG_DIR/scripts:$PATH"
-export PATH="$CHIN_PRIVATE_DIR/bin:$PATH"
+[ -d "$CHIN_PRIVATE_DIR/config/bin" ] && export PATH="$CHIN_PRIVATE_DIR/config/bin:$PATH"
 
 # zprof#2
 # zprof
