@@ -1,0 +1,15 @@
+[Unit]
+Description=Sync system time to hardware clock (RTC) via one-shot chrony
+Documentation=man:hwclock(8) man:chronyd(1)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# 一次性模式：联网对时并 step 系统时钟后退出（等价于 ntpdate），无需 chronyd 常驻
+ExecStart=/usr/bin/chronyd -q
+ExecStart=/usr/bin/hwclock --systohc --utc
+# 失败则每 5 分钟重试，直到对时+写入都成功
+Restart=on-failure
+RestartSec=5min
+StartLimitIntervalSec=0

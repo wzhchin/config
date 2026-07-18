@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily sync of system time to hardware clock
+Documentation=man:hwclock(8)
+
+[Timer]
+OnCalendar=*-*-* 11:00:00
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
