@@ -90,8 +90,6 @@ alias ls='ls --color=auto'
 alias grep='grep --color=auto'
 alias rga="rg --no-ignore-files --no-ignore --hidden -i"
 alias fda='NO_COLOR=1 fd -I --hidden'
-alias rmi='/usr/bin/rm -I'
-alias rm="printf 'Avoid using rm, use \`rmi -f\` instead.\n'"
 alias mpa='mpv --no-video'
 alias aria2n='aria2c --no-conf=true -j4 -x4 -s4'
 alias fgt="unset HISTFILE"
@@ -99,6 +97,7 @@ alias mkp='mkdir -p'
 alias less="less -R" 
 alias ap="realpath -s"
 alias ee="vim"
+alias rmi="trash"
 
 mkpp() {
   local -a args 
