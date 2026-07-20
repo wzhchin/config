@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+[ -d ".git" ] || { echo "not git root"; exit 1; }
+
+remote_url="$(git remote get-url origin 2>/dev/null || echo "unknown")"
+commit_id="$(git rev-parse HEAD 2>/dev/null || echo "unknown")"
+echo "    remote: $remote_url"
+echo "    commit: $commit_id"
+printf '%s\n' "$remote_url" "$commit_id" > ".git-version"
+
+BAK_FILE_NAME="dot-git-bak-$(date +%y%m%d-%H%M%S)"
+mv .git "$BAK_FILE_NAME"
+echo "$BAK_FILE_NAME" >> .gitignore
+

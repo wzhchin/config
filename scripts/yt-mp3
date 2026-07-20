@@ -1,3 +1,123 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-uvx yt-dlp -x --audio-format mp3 "$@"
+set -x
+
+# yt-mp3 — download YouTube audio as mp3 and/or tag it with LLM metadata.
+#
+#   yt-mp3 [-x] URL            download (and tag if -x)
+#   yt-mp3 -x -f FILE          tag an existing mp3, no download
+#
+#   -x, --parse        generate ID3 metadata via an LLM and write it back
+#   -f, --file FILE    tag this local file instead of downloading (implies -x)
+#   URL                positional, the video/playlist URL
+#
+# LLM is called through the OpenAI-compatible chat/completions endpoint:
+#   DEEPSEEK_API_KEY   required when -x is used
+#   YT_MP3_MODEL       model name (default: deepseek-v4-flash)
+#   YT_MP3_BASE        API base (default: https://api.deepseek.com)
+
+base_url="${YT_MP3_BASE:-https://api.deepseek.com}"
+model="${YT_MP3_MODEL:-deepseek-v4-flash}"
+
+parse=0
+file=""
+url=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -x|--parse) parse=1 ;;
+    -f|--file)
+      [[ $# -ge 2 ]] || { echo "yt-mp3: -f needs a filename" >&2; exit 2; }
+      file="$2"; shift; parse=1 ;;
+    -h|--help)
+      sed -n '2,16p' "$0"; exit 0 ;;
+    --) shift; url="${1:-$url}" ;;
+    -*) echo "yt-mp3: unknown option: $1" >&2; exit 2 ;;
+    *)  url="$1" ;;
+  esac
+  shift
+done
+
+# --- metadata tagging -------------------------------------------------------
+
+schema_note='Respond with ONLY a JSON object, no prose, with keys
+title, artist, album, year, genre. Title must be the bare song title with no
+artist prefix and no parenthetical/bracket noise like (Official Video), [MV],
+lyric, audio. Fill artist/album/year/genre with your best guess from the title;
+use "Unknown" for anything truly unguessable, and "" for an unknown year.'
+
+gen_meta() {   # $1 = human-readable title  ->  prints JSON object on stdout
+  local title="$1"
+  [[ -n "${DEEPSEEK_API_KEY:-}" ]] || {
+    echo "yt-mp3: DEEPSEEK_API_KEY is not set; cannot generate metadata" >&2
+    return 1
+  }
+  local body
+  body=$(jq -nc --arg m "$model" --arg sys "$schema_note" --arg u "$title" \
+    '{model:$m, response_format:{type:"json_object"},
+      messages:[{role:"system",content:$sys},{role:"user",content:$u}]}')
+  curl -fsS "${base_url%/}/v1/chat/completions" \
+    -H "Authorization: Bearer ${DEEPSEEK_API_KEY}" \
+    -H "Content-Type: application/json" \
+    -d "$body" | jq -r '.choices[0].message.content // empty'
+}
+
+tag_file() {   # $1 = path to mp3
+  local f="$1"
+  [[ -f "$f" && "$f" == *.mp3 ]] || return 0
+  local base meta_json title artist album year genre tmp
+  base=$(basename "$f" .mp3)
+  base=${base% \[*\]}              # drop trailing yt-dlp " [id]"
+
+  echo "yt-mp3: generating metadata for: $base" >&2
+  if ! meta_json=$(gen_meta "$base") \
+     || ! title=$(printf '%s' "$meta_json" | jq -er '.title // empty' 2>/dev/null); then
+    echo "yt-mp3: metadata generation failed, leaving untouched: $f" >&2
+    return 0
+  fi
+  artist=$(printf '%s' "$meta_json" | jq -r '.artist // "Unknown"')
+  album=$(printf  '%s' "$meta_json" | jq -r '.album  // "Unknown"')
+  year=$(printf   '%s' "$meta_json" | jq -r '.year   // ""')
+  genre=$(printf  '%s' "$meta_json" | jq -r '.genre  // "Unknown"')
+
+  tmp=$(mktemp -- "${f%.mp3}.XXXXXX.mp3"); rm -f -- "$tmp"
+  local meta=(-metadata title="$title" -metadata artist="$artist"
+              -metadata album="$album" -metadata genre="$genre")
+  [[ -n "$year" ]] && meta+=(-metadata date="$year")
+  if ffmpeg -nostdin -v error -y -i "$f" -map 0:a -c copy "${meta[@]}" "$tmp"; then
+    mv -- "$tmp" "$f"
+    printf 'yt-mp3: %s  <-  %s / %s / %s\n' "$f" "$title" "$artist" "$album" >&2
+  else
+    rm -f -- "$tmp"
+    echo "yt-mp3: ffmpeg tag write failed: $f" >&2
+  fi
+}
+
+# --- dispatch ---------------------------------------------------------------
+
+if [[ -n "$file" ]]; then
+  # mode: tag a local file (-x implied)
+  tag_file "$file"
+  exit 0
+fi
+
+if [[ -z "$url" ]]; then
+  echo "yt-mp3: no URL or -f FILE given" >&2
+  exit 2
+fi
+
+# download (audio extraction to mp3 is always on); capture final file paths
+mapfile -t files < <(
+  uvx yt-dlp -x --audio-format mp3 --print 'after_move:filepath' "$url"
+)
+
+if [[ ${#files[@]} -eq 0 ]]; then
+  echo "yt-mp3: nothing downloaded" >&2
+  exit 1
+fi
+
+if [[ "$parse" -eq 1 ]]; then
+  for f in "${files[@]}"; do tag_file "$f"; done
+fi
+
+printf '%s\n' "${files[@]}"
