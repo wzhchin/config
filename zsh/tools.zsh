@@ -123,8 +123,12 @@ hpx() {
     export HTTPS_PROXY="$HTTP_PROXY"
 }
 
-pg-today() {
-  local _d="$CHIN_PG_DIR/$(date +%y%m-%d)"
+tddr() {
+  if [ -z "$CHIN_DAILY_DIR" ]; then
+    echo "Set CHIN_DAILY_DIR"
+    return 1
+  fi
+  local _d="$CHIN_DAILY_DIR/$(date +%y%m-%d)"
   if [ -n "$1" ]; then
     _d="$_d-$1"
   fi

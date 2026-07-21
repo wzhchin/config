@@ -37,10 +37,10 @@ restore() {
     restore_nix
   fi
 
-  if [ -f "$HOME/.profile" ]; then
-    echo "~/.profile is existed"
+  if [ -f "$HOME/.profile.chin" ]; then
+    echo "~/.profile.chin is existed"
   else
-    cp $DFS_DIR/profile.tmpl $HOME/.profile
+    cp $DFS_DIR/profile.chin.tmpl $HOME/.profile.chin
   fi
 }
 

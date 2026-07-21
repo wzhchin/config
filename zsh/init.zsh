@@ -3,7 +3,7 @@
 # zprof#1
 # zmodload zsh/zprof
 
-[ -f "$HOME/.profile" ] && source $HOME/.profile
+[ -f "$HOME/.profile.chin" ] && source $HOME/.profile.chin
 
 export CHIN_PRIVATE_DIR=$CHIN_FILES_DIR/private
 export CHIN_PRIVATE_ENV=$CHIN_PRIVATE_DIR/private-envs
