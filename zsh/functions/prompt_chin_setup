@@ -88,7 +88,7 @@ prompt_chin_git_status() {
     (( untracked )) && working_info+=" %F{red}+$untracked%f"
     parts+="${(j::)working_info}"
 
-    echo -n "g[${(j::)parts}]"
+    echo -n "(${(j::)parts})"
 }
 
 prompt_chin_git_assemble() {
@@ -126,13 +126,10 @@ prompt_chin_precmd() {
 
     unset PROMPT_CHIN_LAST_TIME
 
-    local -a head_prefix
-    [[ -n "$SHPOOL_SESSION_NAME" ]] && head_prefix+="%F{magenta}$SHPOOL_SESSION_NAME%f,"
-    [[ -n "$VIRTUAL_ENV_PROMPT" ]] && head_prefix+="%F{35}${VIRTUAL_ENV_PROMPT:t}%f,"
-    [ -z "$HISTFILE" ] && head_prefix+="??,"
-    local prefix="${(j::)head_prefix}"
+    local histsignal
+    [ -z "$HISTFILE" ] && histsignal+="H- "
 
-    PROMPT_CHIN_HEAD="${prefix}%(?..%F{red}[%?]%f )%(1j.%F{cyan}(%j)%f .)%B%F{yellow}%n%f%b@%B%F{blue}%m%f%b %B%F{green}%~%f%b${cost_time}"
+    PROMPT_CHIN_HEAD="%(?..%F{red}[%?]%f )${}${histsignal}%(1j.%F{cyan}(%j)%f .)%B%F{yellow}%n%f%b@%B%F{blue}%m%f%b %B%F{green}%~%f%b${cost_time}"
 
     local tail_his=""
     PROMPT_CHIN_TAIL="${prompt_newline}${tail_his}%F{red}%(!,%K{red}#%k,$) %b%f%k"
