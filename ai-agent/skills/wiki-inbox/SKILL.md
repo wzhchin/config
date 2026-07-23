@@ -1,15 +1,11 @@
 ---
 name: wiki-inbox
-description: Record what was done in the current session to a dated log folder under ./inbox/. Use when user says "/log", "log this", "record this", "save a log", "write it down", or wants to archive what they've been working on.
+description: Record what was done in the current session to a dated log folder under $CHIN_PUB_WIKI_DIR/inbox/. Use when user says "/log", "log this", "record this", "save a log", "write it down", or wants to archive what they've been working on.
 ---
 
 # Wiki Inbox
 
-Record the current session's work into a structured log folder under `./inbox/` (relative to the current working directory).
-
-## When to use
-
-User invokes `/log` or asks to record/log/archive what they've been doing.
+Record the current session's work into a structured log folder under `$CHIN_PUB_WIKI_DIR/inbox/`.
 
 ## Instructions
 
@@ -26,7 +22,7 @@ Review the current conversation to determine if there is meaningful work context
 
 1. Based on the conversation context, generate a short English slug that captures the essence of the work. Use lowercase, hyphens, and keep it concise.
 2. Construct the folder name: `<yymm-dd>-<slug>` (today's date in `yymm-dd` format).
-3. Full target path: `./inbox/<yymm-dd>-<slug>/`
+3. Full target path: `$CHIN_PUB_WIKI_DIR/inbox/<yymm-dd>-<slug>/`
 4. **If the folder already exists**: append a sequential number, e.g. `<yymm-dd>-<slug>-2/`
 
 ### Step 3: Compose README.md
@@ -106,7 +102,7 @@ If no files seem worth attaching, skip this step and omit the "附件" section.
 After everything is done, show the user:
 
 ```
-日志已记录到: ./inbox/<yymm-dd>-<slug>/
+日志已记录到: inbox/<yymm-dd>-<slug>/
 - README.md ✓
 - <attachment files> ✓ (if any)
 ```
