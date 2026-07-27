@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export PASSWORD_STORE_DIR="$CHIN_PRIVATE_DIR/certs/sliver-store2"
+export PASSWORD_STORE_DIR="$CHIN_PRIVATE_DIR/certs/sliver-store"
 export GNUPGHOME="$PASSWORD_STORE_DIR/.gnupg"
 
 _die() {

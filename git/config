@@ -2,6 +2,7 @@
 
 [core]
 excludesfile = ~/.gitignore
+quotepath = false
 
 [init]
 defaultBranch = main
