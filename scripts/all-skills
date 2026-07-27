@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+DIRS=(
+  "$HOME/.claude/skills"
+  "$HOME/.codex/skills"
+  "$HOME/.grok/skills"
+  "$HOME/.config/opencode/skills"
+)
+
+for d in "${DIRS[@]}"; do
+  echo "==> $d"
+  ls -lh "$d" | sed 's/^/  /g'
+done

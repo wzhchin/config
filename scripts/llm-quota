@@ -13,7 +13,7 @@ providers:
   all      — print all four at once (also the default when no provider is given)
 
 Usage:
-  Z_AI_API_KEY=...        llm_limits.py glm
+  GLM_API_KEY=...        llm_limits.py glm
   DEEPSEEK_API_KEY=...    llm_limits.py deepseek
   llm_limits.py codex
   llm_limits.py grok
@@ -22,12 +22,12 @@ Usage:
 
 Credentials are read from the environment first, then from
 ``pass-sliver get NAME`` when the environment variable is missing:
-  Z_AI_API_KEY        GLM / z.ai token
+  GLM_API_KEY        GLM / z.ai token
   DEEPSEEK_API_KEY    DeepSeek platform API key
   DEEPSEEK_SESSION_KEY
                       DeepSeek web-session token (optional, for usage details)
   GLM_REGION          cn (default, open.bigmodel.cn) | global (api.z.ai)
-  Z_AI_API_HOST       override z.ai base host
+  GLM_API_HOST       override z.ai base host
   CODEX_HOME          override ~/.codex location
   GROK_HOME           override ~/.grok location
   NO_COLOR            set to disable colors
@@ -459,12 +459,12 @@ def _glm_print_limit(label: str, entry: dict) -> None:
 
 
 def do_glm() -> int:
-    api_key = _credential("Z_AI_API_KEY")
+    api_key = _credential("GLM_API_KEY")
     # Default to the mainland-China endpoint (open.bigmodel.cn). Set
     # GLM_REGION=global for the international api.z.ai endpoint.
     region = os.environ.get("GLM_REGION") or "cn"
 
-    host_override = (os.environ.get("Z_AI_API_HOST") or "").strip()
+    host_override = (os.environ.get("GLM_API_HOST") or "").strip()
     if host_override:
         host = host_override.rstrip("/")
         if not host.startswith("http"):
