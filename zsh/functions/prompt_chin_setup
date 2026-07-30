@@ -9,8 +9,68 @@
 # Thanks to: https://github.com/ericfreese/zsh-efgit-prompt/blob/master/prompt_efgit_setup
 
 ## Extended prompt part: git
+_prompt_chin_count_git_commands() {
+    local file="$1"
+    local line
+    local -i count=0
+
+    if [[ -r "$file" ]]; then
+        while IFS= read -r line; do
+            [[ -n "$line" && "$line" != \#* ]] && (( count++ ))
+        done < "$file"
+    fi
+
+    REPLY="$count"
+}
+
+_prompt_chin_git_operation() {
+    local gdir="$1"
+    local operation="" current="" total=""
+    local -i done_count=0 todo_count=0
+
+    if [[ -d "$gdir/rebase-merge" ]]; then
+        [[ -r "$gdir/rebase-merge/msgnum" ]] && current="$(<"$gdir/rebase-merge/msgnum")"
+        [[ -r "$gdir/rebase-merge/end" ]] && total="$(<"$gdir/rebase-merge/end")"
+        operation="REBASE"
+    elif [[ -d "$gdir/rebase-apply" ]]; then
+        [[ -r "$gdir/rebase-apply/next" ]] && current="$(<"$gdir/rebase-apply/next")"
+        [[ -r "$gdir/rebase-apply/last" ]] && total="$(<"$gdir/rebase-apply/last")"
+        operation="REBASE"
+    elif [[ -f "$gdir/MERGE_HEAD" ]]; then
+        operation="MERGING"
+    elif [[ -f "$gdir/CHERRY_PICK_HEAD" ]]; then
+        operation="CHERRY-PICK"
+    elif [[ -f "$gdir/REVERT_HEAD" ]]; then
+        operation="REVERT"
+    elif [[ -f "$gdir/BISECT_LOG" ]]; then
+        operation="BISECT"
+    fi
+
+    if [[ "$operation" == "CHERRY-PICK" || "$operation" == "REVERT" ]]; then
+        _prompt_chin_count_git_commands "$gdir/sequencer/done"
+        done_count="$REPLY"
+        _prompt_chin_count_git_commands "$gdir/sequencer/todo"
+        todo_count="$REPLY"
+
+        if (( done_count + todo_count > 1 )); then
+            current=$(( done_count + 1 ))
+            total=$(( done_count + todo_count ))
+        fi
+    fi
+
+    if [[ -n "$current" && -n "$total" ]]; then
+        operation+=" ${current}/${total}"
+    fi
+
+    REPLY="$operation"
+}
+
 prompt_chin_git_status() {
-    local gdir="$(git rev-parse --git-dir 2>&-)"
+    local -a repo_info
+    repo_info=(${(f)"$(git rev-parse --absolute-git-dir --verify HEAD 2>&-)"})
+
+    local gdir="$repo_info[1]"
+    local ref_oid="$repo_info[2]"
 
     [[ -n "$gdir" ]] || {
         print $'\0'
@@ -18,66 +78,126 @@ prompt_chin_git_status() {
     }
 
     local -a parts
-    local fd line operation stashp head ahead behind conflicts staged changed untracked
+    local fd refs_fd line operation state head oid upstream xy submodule
+    local ref_line ref_name upstream_track
+    local -i ahead=0 behind=0 conflicts=0 staged=0 changed=0 untracked=0
+    local -i stash_count=0 submodules=0 has_upstream_ab=0 upstream_gone=0
 
-    if [ -d "$gdir/rebase-apply" ] || [ -d "$gdir/rebase-merge" ]; then
-        operation="REBASE|"
-    elif [ -f "$gdir/MERGE_HEAD" ]; then
-        operation="MERGING|"
-    elif test -f "$gdir/CHERRY_PICK_HEAD"; then
-        operation="CHERRY-PICK|"
-    elif test -f "$gdir/REVERT_HEAD"; then
-        operation="REVERT|"
-    elif [ -f "$gdir/BISECT_LOG" ]; then
-        operation="BISECT|"
+    _prompt_chin_git_operation "$gdir"
+    operation="$REPLY"
+    [[ -n "$operation" ]] && operation+="|"
+
+    if [[ -n "$ref_oid" ]]; then
+        exec {refs_fd}< <(
+            git for-each-ref \
+                --format='%(refname)%09%(upstream:track)' \
+                --points-at "$ref_oid" \
+                refs/heads/ \
+                refs/tags/ \
+                2>/dev/null
+        )
     fi
 
-    if [ -f "$gdir/refs/stash" ]; then
-        stashp="SH|"
-    fi
+    exec {fd}< <(
+        GIT_OPTIONAL_LOCKS=0 git status \
+            --porcelain=v2 \
+            --branch \
+            --show-stash \
+            2>&-
+    )
 
-    parts+="%F{red}${operation}${stashp}%f"
-
-
-    exec {fd}< <(GIT_OPTIONAL_LOCKS=0 git status --porcelain=v2 --branch 2>&-)
-
-    while read -A -u $fd line; do
+    while read -A -u "$fd" line; do
         case "$line" in
+            '# branch.oid'*)
+                oid="$line[3]"
+                ;;
             '# branch.head'*)
                 head="$line[3]"
+                ;;
+            '# branch.upstream'*)
+                upstream="$line[3]"
                 ;;
             '# branch.ab'*) # Divergence from upstream
                 ahead="${line[3]/#+}"
                 behind="${line[4]/#-}"
+                has_upstream_ab=1
+                ;;
+            '# stash'*)
+                stash_count="$line[3]"
                 ;;
             [12]*) # Modified or renamed/copied
-                [[ "${${line[2]}[1]}" != "." ]] && ((staged++))
-                [[ "${${line[2]}[2]}" != "." ]] && ((changed++))
+                xy="$line[2]"
+                submodule="$line[3]"
+                [[ "${xy[1]}" != "." ]] && (( staged++ ))
+                [[ "${xy[2]}" != "." ]] && (( changed++ ))
+                [[ "$submodule" == S* ]] && (( submodules++ ))
                 ;;
             'u'*) # Unmerged
-                ((conflicts++))
+                (( conflicts++ ))
                 ;;
             '?'*) # Untracked
-                ((untracked++))
+                (( untracked++ ))
                 ;;
         esac
     done
 
     exec {fd}<&-
 
-    if [[ $head == "(detached)" ]]; then
-        head="$(git rev-parse --short HEAD 2>/dev/null)"
+    if [[ "$oid" == "(initial)" ]]; then
+        state="INITIAL|"
+    elif [[ "$head" == "(detached)" ]]; then
+        local operation_head=""
+        if [[ "$operation" == REBASE* ]]; then
+            if [[ -r "$gdir/rebase-merge/head-name" ]]; then
+                operation_head="$(<"$gdir/rebase-merge/head-name")"
+            elif [[ -r "$gdir/rebase-apply/head-name" ]]; then
+                operation_head="$(<"$gdir/rebase-apply/head-name")"
+            fi
+        fi
+
+        if [[ "$operation_head" == refs/heads/* ]]; then
+            head="${operation_head#refs/heads/}"
+        else
+            head="@${oid[1,7]}"
+        fi
     fi
+
     local -a tags
-    tags=(${(f)"$(git for-each-ref --format='%(refname:short)' --points-at HEAD refs/tags/ 2>/dev/null)"})
+    if [[ -n "$refs_fd" ]]; then
+        while IFS= read -r -u "$refs_fd" ref_line; do
+            ref_name="${ref_line%%$'\t'*}"
+            upstream_track="${ref_line#*$'\t'}"
+
+            if [[ "$ref_name" == refs/tags/* ]]; then
+                tags+="${ref_name#refs/tags/}"
+            elif [[ "$ref_name" == "refs/heads/$head" && "$upstream_track" == "[gone]" ]]; then
+                upstream_gone=1
+            fi
+        done
+        exec {refs_fd}<&-
+    fi
+
+    head="${head//\%/%%}"
+    local -i tag_index
+    for (( tag_index = 1; tag_index <= $#tags; tag_index++ )); do
+        tags[$tag_index]="${tags[$tag_index]//\%/%%}"
+    done
     (( $#tags )) && head+=" ${(j:,:)tags}"
+
+    parts+="%F{red}${operation}${state}"
+    (( stash_count )) && parts+="SH${stash_count}|"
+    parts+="%f"
 
     parts+="${head}"
 
     local -a upstream_divergence
 
-    (( ahead )) && upstream_divergence+=" %F{90}A$ahead%f"
-    (( behind )) && upstream_divergence+=" %F{90}B$behind%f"
+    if (( upstream_gone )) || { [[ -n "$upstream" ]] && (( ! has_upstream_ab )); }; then
+        upstream_divergence+=" %F{red}GONE%f"
+    else
+        (( ahead )) && upstream_divergence+=" %F{90}A$ahead%f"
+        (( behind )) && upstream_divergence+=" %F{90}B$behind%f"
+    fi
     (( $#upstream_divergence )) && parts+="${(j::)upstream_divergence}"
 
     local -a working_info
@@ -86,9 +206,10 @@ prompt_chin_git_status() {
     (( staged )) && working_info+=" %F{green}=$staged%f"
     (( changed )) && working_info+=" %F{208}*$changed%f"
     (( untracked )) && working_info+=" %F{red}+$untracked%f"
+    (( submodules )) && working_info+=" %F{cyan}S$submodules%f"
     parts+="${(j::)working_info}"
 
-    echo -n "(${(j::)parts})"
+    print -rn -- "(${(j::)parts})"
 }
 
 prompt_chin_git_assemble() {
