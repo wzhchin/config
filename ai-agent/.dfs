@@ -39,6 +39,12 @@ restore() {
             kmap "$j" "$HOME/.claude/${i##*/}/${j##*/}"
         done
     done
+    for i in "$DFS_DIR/"{skills,agents,commands}; do
+        for j in "$i"/*; do
+            kmap "$j" "$HOME/.codex/${i##*/}/${j##*/}"
+        done
+    done
     kmap "RULES.md" "$HOME/.config/opencode/AGENTS.md"
+    kmap "RULES.md" "$HOME/.codex/AGENTS.md"
     kmap "RULES.md" "$HOME/.claude/CLAUDE.md"
 }

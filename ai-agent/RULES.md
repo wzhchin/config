@@ -1,1 +1,1 @@
-@RTK.md
+- DO NOT execute `find $HOME`, `find /`, you could only find in a small range.

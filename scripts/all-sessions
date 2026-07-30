@@ -1,0 +1,654 @@
+#!/usr/bin/env python3
+"""List conversation sessions from AI coding agents.
+
+Agents: grok, codex, claude (Claude Code), opencode
+
+Columns: AGENT  TIME  TITLE  CWD
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sqlite3
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable
+from urllib.parse import unquote
+
+AGENT_ALIASES = {
+    "grok": "grok",
+    "codex": "codex",
+    "claude": "claude",
+    "claude-code": "claude",
+    "cc": "claude",
+    "opencode": "opencode",
+    "oc": "opencode",
+    "open-code": "opencode",
+}
+DEFAULT_AGENTS = ("grok", "codex", "claude", "opencode")
+
+UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+CODEX_ROLLOUT_RE = re.compile(
+    r"^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-"
+    r"([0-9a-fA-F-]{36})\.jsonl(?:\.zst)?$"
+)
+
+
+def one_line(text: Any, limit: int = 120) -> str:
+    s = " ".join(str(text or "").split())
+    if len(s) <= limit:
+        return s
+    return s[: max(0, limit - 3)] + "..."
+
+
+def iso_from_ms(ms: int | None) -> str:
+    if not ms:
+        return ""
+    try:
+        return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).astimezone().strftime(
+            "%Y-%m-%d %H:%M"
+        )
+    except (OverflowError, OSError, ValueError):
+        return ""
+
+
+def mtime_ms(path: Path) -> int:
+    try:
+        return int(path.stat().st_mtime * 1000)
+    except OSError:
+        return 0
+
+
+def open_sqlite(path: Path) -> sqlite3.Connection | None:
+    if not path.is_file():
+        return None
+    try:
+        return sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return None
+
+
+def normalize_agents(raw: str) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for part in raw.split(","):
+        key = part.strip().lower()
+        if not key:
+            continue
+        agent = AGENT_ALIASES.get(key)
+        if agent is None:
+            raise SystemExit(
+                f"unknown agent: {part!r} (want grok,codex,claude,opencode)"
+            )
+        if agent not in seen:
+            out.append(agent)
+            seen.add(agent)
+    if not out:
+        raise SystemExit("empty --agent filter")
+    return out
+
+
+def resolve_cwd_filter(cwd: str | None) -> str:
+    if not cwd:
+        return ""
+    path = Path(cwd).expanduser()
+    try:
+        return str(path.resolve())
+    except OSError:
+        return str(path)
+
+
+class SessionIndex:
+    def __init__(
+        self,
+        *,
+        home: Path,
+        agents: list[str],
+        cwd_filter: str = "",
+        days: int = 0,
+        limit: int = 0,
+        query: str = "",
+    ) -> None:
+        self.home = home
+        self.agents = agents
+        self.cwd_filter = cwd_filter
+        self.days = days
+        self.limit = limit
+        self.query = query.strip()
+        self.now_ms = int(time.time() * 1000)
+        self.min_ms = (
+            self.now_ms - days * 24 * 60 * 60 * 1000 if days > 0 else 0
+        )
+
+    def cwd_ok(self, cwd: str | None) -> bool:
+        if not self.cwd_filter:
+            return True
+        if not cwd:
+            return False
+        left = os.path.normpath(cwd)
+        right = os.path.normpath(self.cwd_filter)
+        return left == right or left.startswith(right + os.sep)
+
+    def within(self, ms: int) -> bool:
+        if self.days <= 0:
+            return True
+        return ms >= self.min_ms
+
+    def record(
+        self,
+        agent: str,
+        session_id: str,
+        *,
+        title: str = "",
+        cwd: str = "",
+        updated_ms: int = 0,
+    ) -> dict[str, Any] | None:
+        if not session_id or not self.within(updated_ms) or not self.cwd_ok(cwd):
+            return None
+        return {
+            "agent": agent,
+            "session_id": session_id,
+            "title": one_line(title, 160),
+            "cwd": cwd or "",
+            "updated_ms": int(updated_ms or 0),
+            "updated_at": iso_from_ms(updated_ms),
+        }
+
+    def match_query(self, item: dict[str, Any]) -> bool:
+        if not self.query:
+            return True
+        hay = " ".join(
+            [
+                item.get("agent") or "",
+                item.get("title") or "",
+                item.get("cwd") or "",
+                item.get("session_id") or "",
+            ]
+        ).lower()
+        return all(word.lower() in hay for word in self.query.split() if word)
+
+    # ------------------------------------------------------------------ Claude
+    def _claude_title_and_cwd(self, path: Path) -> tuple[str, str]:
+        title = ""
+        cwd = ""
+        first_user = ""
+        try:
+            with path.open("r", encoding="utf-8", errors="replace") as handle:
+                for line in handle:
+                    if not line.strip():
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(obj, dict):
+                        continue
+                    typ = obj.get("type")
+                    if not cwd:
+                        for key in ("cwd", "projectPath", "project_path"):
+                            val = obj.get(key)
+                            if isinstance(val, str) and val:
+                                cwd = val
+                                break
+                    if (
+                        typ == "summary"
+                        and isinstance(obj.get("summary"), str)
+                        and obj["summary"]
+                    ):
+                        title = obj["summary"]
+                    elif typ == "custom-title":
+                        for key in ("customTitle", "title", "summary"):
+                            val = obj.get(key)
+                            if isinstance(val, str) and val:
+                                title = val
+                                break
+                    elif typ == "ai-title":
+                        for key in ("title", "aiTitle", "summary"):
+                            val = obj.get(key)
+                            if isinstance(val, str) and val:
+                                title = val
+                                break
+                    if not first_user and typ == "user":
+                        msg = obj.get("message")
+                        content = msg.get("content") if isinstance(msg, dict) else None
+                        if isinstance(content, str) and content.strip():
+                            first_user = content
+                        elif isinstance(content, list):
+                            parts: list[str] = []
+                            for block in content:
+                                if isinstance(block, str):
+                                    parts.append(block)
+                                elif isinstance(block, dict) and isinstance(
+                                    block.get("text"), str
+                                ):
+                                    parts.append(block["text"])
+                            first_user = "\n".join(parts)
+                    if title and cwd and first_user:
+                        break
+        except OSError:
+            pass
+        return title or first_user, cwd
+
+    def discover_claude(self) -> list[dict[str, Any]]:
+        root = Path(os.environ.get("CLAUDE_CONFIG_DIR") or (self.home / ".claude"))
+        projects = root / "projects"
+        if not projects.is_dir():
+            return []
+        out: list[dict[str, Any]] = []
+        for path in projects.rglob("*.jsonl"):
+            if not path.is_file() or path.is_symlink() or not UUID_RE.fullmatch(path.stem):
+                continue
+            title, cwd = self._claude_title_and_cwd(path)
+            item = self.record(
+                "claude",
+                path.stem,
+                title=title,
+                cwd=cwd,
+                updated_ms=mtime_ms(path),
+            )
+            if item:
+                out.append(item)
+        return out
+
+    # ------------------------------------------------------------------- Codex
+    def _newest_codex_state(self, home: Path) -> Path | None:
+        best: tuple[int, Path] | None = None
+        try:
+            children = list(home.iterdir())
+        except OSError:
+            return None
+        for path in children:
+            match = re.fullmatch(r"state_(\d+)\.sqlite", path.name)
+            if match and path.is_file() and not path.is_symlink():
+                ver = int(match.group(1))
+                if best is None or ver > best[0]:
+                    best = (ver, path)
+        return best[1] if best else None
+
+    def discover_codex(self) -> list[dict[str, Any]]:
+        home = Path(os.environ.get("CODEX_HOME") or (self.home / ".codex"))
+        out: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        db_path = self._newest_codex_state(home)
+        if db_path is not None:
+            con = open_sqlite(db_path)
+            if con is not None:
+                try:
+                    cols = {row[1] for row in con.execute("PRAGMA table_info(threads)")}
+                    if {"id", "cwd", "title"}.issubset(cols):
+                        updated_expr = (
+                            "COALESCE(updated_at_ms, CASE WHEN updated_at > 1000000000000 "
+                            "THEN updated_at ELSE updated_at * 1000 END, 0)"
+                        )
+                        sql = (
+                            f"SELECT id, cwd, title, {updated_expr}, "
+                            "COALESCE(archived, 0) FROM threads"
+                        )
+                        for sid, cwd, title, updated, archived in con.execute(sql):
+                            if archived or not isinstance(sid, str):
+                                continue
+                            item = self.record(
+                                "codex",
+                                sid,
+                                title=title or "",
+                                cwd=cwd or "",
+                                updated_ms=int(updated or 0),
+                            )
+                            if item:
+                                out.append(item)
+                                seen.add(sid.lower())
+                except sqlite3.Error:
+                    pass
+                finally:
+                    con.close()
+
+        sessions_root = home / "sessions"
+        if not sessions_root.is_dir():
+            return out
+
+        for path in sessions_root.rglob("rollout-*.jsonl*"):
+            if not path.is_file() or path.is_symlink():
+                continue
+            match = CODEX_ROLLOUT_RE.match(path.name)
+            if not match:
+                continue
+            sid = match.group(1)
+            if sid.lower() in seen:
+                continue
+            title = ""
+            cwd = ""
+            try:
+                with path.open("r", encoding="utf-8", errors="replace") as handle:
+                    for line in handle:
+                        if not line.strip():
+                            continue
+                        try:
+                            obj = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if not isinstance(obj, dict):
+                            continue
+                        if obj.get("type") == "session_meta":
+                            payload = obj.get("payload") or {}
+                            if isinstance(payload, dict):
+                                cwd = str(payload.get("cwd") or cwd)
+                        if not title and obj.get("type") == "response_item":
+                            payload = obj.get("payload") or {}
+                            if isinstance(payload, dict) and payload.get("role") == "user":
+                                content = payload.get("content")
+                                if isinstance(content, str):
+                                    title = content
+                                elif isinstance(content, list):
+                                    for block in content:
+                                        if isinstance(block, dict) and block.get(
+                                            "type"
+                                        ) in {"input_text", "text"}:
+                                            title = str(block.get("text") or "")
+                                            break
+                        if cwd and title:
+                            break
+            except OSError:
+                pass
+            item = self.record(
+                "codex",
+                sid,
+                title=title,
+                cwd=cwd,
+                updated_ms=mtime_ms(path),
+            )
+            if item:
+                out.append(item)
+                seen.add(sid.lower())
+        return out
+
+    # -------------------------------------------------------------------- Grok
+    def discover_grok(self) -> list[dict[str, Any]]:
+        root = Path(os.environ.get("GROK_HOME") or (self.home / ".grok")) / "sessions"
+        if not root.is_dir():
+            return []
+        out: list[dict[str, Any]] = []
+        for summary in root.rglob("summary.json"):
+            if summary.name != "summary.json" or not summary.is_file():
+                continue
+            session_dir = summary.parent
+            sid = session_dir.name
+            if not UUID_RE.fullmatch(sid):
+                continue
+            try:
+                data = json.loads(summary.read_text(encoding="utf-8", errors="replace"))
+            except (OSError, json.JSONDecodeError):
+                data = {}
+            info = data.get("info") if isinstance(data, dict) else {}
+            if not isinstance(info, dict):
+                info = {}
+            cwd = str(info.get("cwd") or "")
+            if not cwd:
+                try:
+                    cwd = unquote(session_dir.parent.name)
+                except Exception:
+                    cwd = ""
+            title = ""
+            updated = 0
+            if isinstance(data, dict):
+                for key in ("generated_title", "session_summary", "title"):
+                    val = data.get(key)
+                    if isinstance(val, str) and val.strip():
+                        title = val
+                        break
+                for key in ("last_active_at", "updated_at", "created_at"):
+                    val = data.get(key)
+                    if isinstance(val, str) and val:
+                        try:
+                            updated = int(
+                                datetime.fromisoformat(
+                                    val.replace("Z", "+00:00")
+                                ).timestamp()
+                                * 1000
+                            )
+                            break
+                        except ValueError:
+                            pass
+            if not updated:
+                updated = mtime_ms(summary)
+            item = self.record("grok", sid, title=title, cwd=cwd, updated_ms=updated)
+            if item:
+                out.append(item)
+        return out
+
+    # ---------------------------------------------------------------- OpenCode
+    def discover_opencode(self) -> list[dict[str, Any]]:
+        share = (
+            Path(os.environ.get("XDG_DATA_HOME") or (self.home / ".local" / "share"))
+            / "opencode"
+        )
+        out: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        db_path = share / "opencode.db"
+        con = open_sqlite(db_path)
+        if con is not None:
+            try:
+                cols = {row[1] for row in con.execute("PRAGMA table_info(session)")}
+                if {"id", "directory", "title", "time_updated"}.issubset(cols):
+                    for sid, directory, title, created, updated in con.execute(
+                        "SELECT id, directory, title, time_created, time_updated "
+                        "FROM session WHERE time_archived IS NULL OR time_archived = 0"
+                    ):
+                        if not isinstance(sid, str):
+                            continue
+                        item = self.record(
+                            "opencode",
+                            sid,
+                            title=title or "",
+                            cwd=directory or "",
+                            updated_ms=int(updated or created or 0),
+                        )
+                        if item:
+                            out.append(item)
+                            seen.add(sid)
+            except sqlite3.Error:
+                pass
+            finally:
+                con.close()
+
+        storage = share / "storage" / "session"
+        if storage.is_dir():
+            for path in storage.rglob("ses_*.json"):
+                if not path.is_file() or path.is_symlink() or path.stem in seen:
+                    continue
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+                except (OSError, json.JSONDecodeError):
+                    data = {}
+                title = ""
+                cwd = ""
+                updated = mtime_ms(path)
+                if isinstance(data, dict):
+                    title = str(data.get("title") or "")
+                    cwd = str(data.get("directory") or "")
+                    t = data.get("time")
+                    if isinstance(t, dict):
+                        updated = int(t.get("updated") or t.get("created") or updated)
+                item = self.record(
+                    "opencode",
+                    path.stem,
+                    title=title,
+                    cwd=cwd,
+                    updated_ms=updated,
+                )
+                if item:
+                    out.append(item)
+                    seen.add(path.stem)
+        return out
+
+    def collect(self) -> list[dict[str, Any]]:
+        discoverers: dict[str, Callable[[], list[dict[str, Any]]]] = {
+            "claude": self.discover_claude,
+            "codex": self.discover_codex,
+            "grok": self.discover_grok,
+            "opencode": self.discover_opencode,
+        }
+        items: list[dict[str, Any]] = []
+        for agent in self.agents:
+            fn = discoverers.get(agent)
+            if fn is None:
+                continue
+            try:
+                items.extend(fn())
+            except Exception as exc:  # noqa: BLE001
+                print(f"warn: {agent}: {exc}", file=sys.stderr)
+        items = [it for it in items if self.match_query(it)]
+        items.sort(
+            key=lambda x: (x.get("updated_ms") or 0, x.get("session_id") or ""),
+            reverse=True,
+        )
+        if self.limit > 0:
+            items = items[: self.limit]
+        return items
+
+
+def print_table(items: list[dict[str, Any]]) -> None:
+    if not items:
+        print("No sessions found.")
+        return
+    headers = ("AGENT", "TIME", "TITLE", "CWD")
+    rows = [
+        (
+            it.get("agent", ""),
+            it.get("updated_at", ""),
+            one_line(it.get("title"), 56),
+            one_line(it.get("cwd"), 48),
+        )
+        for it in items
+    ]
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], len(cell))
+    fmt = "  ".join(f"{{:{w}}}" for w in widths)
+    print(fmt.format(*headers))
+    print(fmt.format(*("-" * w for w in widths)))
+    for row in rows:
+        print(fmt.format(*row))
+    print(f"\nTotal: {len(items)}")
+
+
+def print_tsv(items: list[dict[str, Any]]) -> None:
+    print("agent\ttime\ttitle\tcwd\tsession_id")
+
+    def clean(value: Any) -> str:
+        return " ".join(str(value or "").split()).replace("\t", " ")
+
+    for it in items:
+        print(
+            "\t".join(
+                [
+                    clean(it.get("agent")),
+                    clean(it.get("updated_at")),
+                    clean(it.get("title")),
+                    clean(it.get("cwd")),
+                    clean(it.get("session_id")),
+                ]
+            )
+        )
+
+
+def print_json(items: list[dict[str, Any]]) -> None:
+    print(json.dumps(items, ensure_ascii=False, indent=2))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="all-sessions",
+        description=(
+            "List sessions from grok / codex / claude-code / opencode. "
+            "Columns: AGENT TIME TITLE CWD"
+        ),
+    )
+    parser.add_argument(
+        "-a",
+        "--agent",
+        default=",".join(DEFAULT_AGENTS),
+        help="comma filter: grok,codex,claude,opencode (aliases: claude-code,cc,oc)",
+    )
+    parser.add_argument(
+        "-c",
+        "--cwd",
+        default="",
+        help="only sessions under DIR",
+    )
+    parser.add_argument(
+        "-d",
+        "--days",
+        type=int,
+        default=0,
+        help="only sessions updated within N days",
+    )
+    parser.add_argument(
+        "-n",
+        "--limit",
+        type=int,
+        default=0,
+        help="keep at most N newest sessions",
+    )
+    parser.add_argument(
+        "-f",
+        "--format",
+        choices=("table", "tsv", "json"),
+        default="table",
+        help="output format (default: table)",
+    )
+    parser.add_argument(
+        "query",
+        nargs="*",
+        help="optional words; filter title/cwd/agent/session_id (AND, case-insensitive)",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.days < 0:
+        parser.error("--days must be a non-negative integer")
+    if args.limit < 0:
+        parser.error("--limit must be a non-negative integer")
+
+    agents = normalize_agents(args.agent)
+    index = SessionIndex(
+        home=Path.home(),
+        agents=agents,
+        cwd_filter=resolve_cwd_filter(args.cwd),
+        days=args.days,
+        limit=args.limit,
+        query=" ".join(args.query),
+    )
+    items = index.collect()
+
+    if args.format == "tsv":
+        print_tsv(items)
+    elif args.format == "json":
+        print_json(items)
+    else:
+        print_table(items)
+
+    return 0 if items else 1
+
+
+if __name__ == "__main__":
+    try:
+        for stream in (sys.stdout, sys.stderr):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    raise SystemExit(main())

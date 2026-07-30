@@ -1,0 +1,10 @@
+cat <-EOF >> .gitignore
+node_modules/
+.venv*/
+**/__pycache__/
+*.pyc
+.DS_Store
+/target
+/build
+NUL
+EOF
