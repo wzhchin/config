@@ -11,19 +11,18 @@
 
 (setq byte-compile-warnings nil)
 
-(setq package-quickstart t)
+(setq package-enable-at-startup nil
+      package-quickstart nil)
 (add-hook 'emacs-startup-hook
           (lambda ()
-            (let ((threshold (* 100 gc-cons-threshold))
-                  (percentage gc-cons-percentage))
-              (message "Emacs ready in %s with %d garbage collections."
-                       (format "%.2f seconds"
-                               (float-time
-                                (time-subtract after-init-time before-init-time)))
-                       gcs-done)
-              (setq gc-cons-threshold threshold
-                    gc-cons-percentage percentage)
-              (garbage-collect)))
+            (setq file-name-handler-alist
+                  chin/startup-file-name-handler-alist
+                  gc-cons-threshold (* 16 1024 1024)
+                  gc-cons-percentage 0.1)
+            (message "Emacs ready in %.2f seconds with %d garbage collections."
+                     (float-time
+                      (time-subtract after-init-time before-init-time))
+                     gcs-done))
           t)
 
 ;; (setq x-gtk-stock-map '(("etc/images/new" . "n:emacs-new")
@@ -85,8 +84,13 @@
 ;;                         ("images/gud/recstop" . "n:emacs-media-stop")))
 
 
-(setq 
-      file-name-handler-alist nil
+(defvar chin/startup-file-name-handler-alist file-name-handler-alist)
+
+(setq file-name-handler-alist nil
       message-log-max 16384
-      gc-cons-threshold (* 1024 1024 1024)
+      gc-cons-threshold most-positive-fixnum
+      gc-cons-percentage 0.6
+      inhibit-splash-screen t
+      inhibit-startup-screen t
+      inhibit-startup-message t
       auto-window-vscroll nil)
