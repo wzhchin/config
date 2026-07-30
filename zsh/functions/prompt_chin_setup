@@ -252,8 +252,14 @@ prompt_chin_precmd() {
 
     PROMPT_CHIN_HEAD="%(?..%F{red}[%?]%f )${}${histsignal}%(1j.%F{cyan}(%j)%f .)%B%F{yellow}%n%f%b@%B%F{blue}%m%f%b %B%F{green}%~%f%b${cost_time}"
 
-    local tail_his=""
-    PROMPT_CHIN_TAIL="${prompt_newline}${tail_his}%F{red}%(!,%K{red}#%k,$) %b%f%k"
+    local -a environment_status
+    [[ -n "${VIRTUAL_ENV}" ]] && environment_status+="%F{cyan}(${VIRTUAL_ENV:t})%f"
+    [[ -n "$HTTP_PROXY" ]] && environment_status+="%F{yellow}HPX%f"
+
+    local environment_line=""
+    (( $#environment_status )) && environment_line="${prompt_newline}${(j: :)environment_status}"
+
+    PROMPT_CHIN_TAIL="${environment_line}${prompt_newline}%F{red}%(!,%K{red}#%k,$) %b%f%k"
 
     PROMPT="${PROMPT_CHIN_HEAD}${PROMPT_CHIN_TAIL}"
 
