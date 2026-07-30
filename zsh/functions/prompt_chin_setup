@@ -261,7 +261,12 @@ prompt_chin_precmd() {
 
     PROMPT_CHIN_TAIL="${environment_line}${prompt_newline}%F{red}%(!,%K{red}#%k,$) %b%f%k"
 
-    PROMPT="${PROMPT_CHIN_HEAD}${PROMPT_CHIN_TAIL}"
+    local git_placeholder=""
+    if git rev-parse --git-dir &>/dev/null; then
+        git_placeholder=" %F{90}(…)%f"
+    fi
+
+    PROMPT="${PROMPT_CHIN_HEAD}${git_placeholder}${PROMPT_CHIN_TAIL}"
 
     prompt_chin_extend
 }
