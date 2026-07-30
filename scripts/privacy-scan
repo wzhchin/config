@@ -1,0 +1,519 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HISTORY_MODE=all
+INCLUDE_IGNORED=true
+SCAN_PII=true
+SCAN_LOW_CONFIDENCE=true
+TARGET=.
+REPO_ROOT=
+HISTORY_PATHSPEC=.
+TEMP_DIR=
+FINDINGS_FILE=
+declare -a EXCLUDE_GLOBS=()
+declare -a HISTORY_REVISIONS=()
+
+msg() {
+    if [[ -t 1 ]]; then
+        printf '\033[32m==> %s %s\033[0m\n' "$(date +%H:%M:%S)" "$*"
+    else
+        printf '==> %s %s\n' "$(date +%H:%M:%S)" "$*"
+    fi
+}
+
+warn() {
+    if [[ -t 2 ]]; then
+        printf '\033[33m==> %s warning ~ %s\033[0m\n' "$(date +%H:%M:%S)" "$*" >&2
+    else
+        printf '==> %s warning ~ %s\n' "$(date +%H:%M:%S)" "$*" >&2
+    fi
+}
+
+error() {
+    if [[ -t 2 ]]; then
+        printf '\033[31m==> %s error ~ %s\033[0m\n' "$(date +%H:%M:%S)" "$*" >&2
+    else
+        printf '==> %s error ~ %s\n' "$(date +%H:%M:%S)" "$*" >&2
+    fi
+}
+
+die() {
+    error "$@"
+    exit 2
+}
+
+_show_help() {
+    printf '%s\n' \
+        'Usage: privacy-scan [OPTIONS] [PATH]' \
+        '' \
+        'Scan files and Git history for content that may leak secrets or privacy.' \
+        'Secret values are never printed; findings contain only risk, category,' \
+        'scope, and path.' \
+        '' \
+        'Options:' \
+        '  --history MODE       Git history mode: all, unpushed, or none' \
+        '                       (default: all)' \
+        '  --no-ignored         Do not scan files ignored by Git or ignore files' \
+        '  --no-pii             Skip email, phone, ID, address, and device scans' \
+        '  --no-low-confidence  Skip encoded-string, IP, and UUID candidates' \
+        '  --exclude GLOB       Exclude a glob; may be supplied more than once' \
+        '  -h, --help           Show this help' \
+        '' \
+        'Exit status:' \
+        '  0  no findings' \
+        '  1  one or more findings' \
+        '  2  usage, dependency, or scan error' \
+        '' \
+        'Examples:' \
+        '  privacy-scan' \
+        '  privacy-scan --history unpushed' \
+        '  privacy-scan --no-ignored --exclude "vendor/**" /path/to/repo'
+}
+
+_cleanup() {
+    if [[ -n ${TEMP_DIR:-} && -d $TEMP_DIR ]]; then
+        rm -rf -- "$TEMP_DIR"
+    fi
+}
+
+_require_command() {
+    local command_name="$1"
+
+    command -v "$command_name" >/dev/null 2>&1 || \
+        die "required command not found: $command_name"
+}
+
+_record() {
+    local severity="$1"
+    local category="$2"
+    local scope="$3"
+    local filepath="$4"
+
+    printf '%s\t%s\t%s\t%s\n' \
+        "$severity" "$category" "$scope" "$filepath" >> "$FINDINGS_FILE"
+}
+
+_consume_matches() {
+    local severity="$1"
+    local category="$2"
+    local scope="$3"
+    local matches_file="$4"
+    local filepath
+
+    while IFS= read -r filepath; do
+        [[ -n $filepath ]] || continue
+        _record "$severity" "$category" "$scope" "$filepath"
+    done < "$matches_file"
+}
+
+_worktree_rg_args() {
+    local array_name="$1"
+    local -n rg_result_ref=$array_name
+    local glob
+
+    rg_result_ref=(--hidden --text --files-with-matches --ignore-case)
+    if [[ $INCLUDE_IGNORED == true ]]; then
+        rg_result_ref+=(-uu)
+    fi
+    rg_result_ref+=(-g '!**/.git/**')
+
+    for glob in "${EXCLUDE_GLOBS[@]}"; do
+        rg_result_ref+=(-g "!$glob")
+    done
+}
+
+_worktree_files_args() {
+    local array_name="$1"
+    local -n files_result_ref=$array_name
+    local glob
+
+    files_result_ref=(--hidden)
+    if [[ $INCLUDE_IGNORED == true ]]; then
+        files_result_ref+=(-uu)
+    fi
+    files_result_ref+=(-g '!**/.git/**')
+
+    for glob in "${EXCLUDE_GLOBS[@]}"; do
+        files_result_ref+=(-g "!$glob")
+    done
+}
+
+_scan_worktree_pattern() {
+    local severity="$1"
+    local category="$2"
+    local pattern="$3"
+    local matches_file="$TEMP_DIR/worktree-$category"
+    local status
+    local -a rg_args=()
+
+    _worktree_rg_args rg_args
+
+    if rg "${rg_args[@]}" -e "$pattern" -- "$TARGET" > "$matches_file" 2>/dev/null; then
+        _consume_matches "$severity" "$category" worktree "$matches_file"
+    else
+        status=$?
+        [[ $status -eq 1 ]] || die "worktree scan failed for category: $category"
+    fi
+}
+
+_scan_worktree_filenames() {
+    local severity="$1"
+    local category="$2"
+    local pattern="$3"
+    local files_file="$TEMP_DIR/worktree-files"
+    local matches_file="$TEMP_DIR/worktree-filenames-$category"
+    local status
+    local -a rg_args=()
+
+    _worktree_files_args rg_args
+
+    if rg --files "${rg_args[@]}" -- "$TARGET" > "$files_file" 2>/dev/null; then
+        :
+    else
+        status=$?
+        [[ $status -eq 1 ]] || die "unable to enumerate files under: $TARGET"
+    fi
+
+    if rg -i -e "$pattern" -- "$files_file" > "$matches_file"; then
+        _consume_matches "$severity" "$category" worktree "$matches_file"
+    else
+        status=$?
+        [[ $status -eq 1 ]] || die "filename scan failed for category: $category"
+    fi
+}
+
+_prepare_git() {
+    local target_abs
+    local upstream
+
+    [[ $HISTORY_MODE != none ]] || return 0
+    command -v git >/dev/null 2>&1 || {
+        warn 'Git is unavailable; skipping history scan'
+        HISTORY_MODE=none
+        return
+    }
+
+    if ! REPO_ROOT=$(git -C "$TARGET" rev-parse --show-toplevel 2>/dev/null); then
+        warn 'target is not inside a Git repository; skipping history scan'
+        HISTORY_MODE=none
+        return
+    fi
+
+    target_abs=$(realpath -- "$TARGET")
+    if [[ -f $target_abs ]]; then
+        HISTORY_PATHSPEC=$(realpath --relative-to="$REPO_ROOT" "$target_abs")
+    else
+        HISTORY_PATHSPEC=$(realpath --relative-to="$REPO_ROOT" "$target_abs")
+        [[ $HISTORY_PATHSPEC != . ]] && HISTORY_PATHSPEC="$HISTORY_PATHSPEC/"
+    fi
+
+    case "$HISTORY_MODE" in
+        all)
+            HISTORY_REVISIONS=(--all)
+            ;;
+        unpushed)
+            if ! upstream=$(git -C "$REPO_ROOT" rev-parse \
+                --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null); then
+                warn 'current branch has no upstream; skipping Git history scan'
+                HISTORY_MODE=none
+                return
+            fi
+            HISTORY_REVISIONS=("$upstream..HEAD")
+            ;;
+        *)
+            die "invalid history mode: $HISTORY_MODE"
+            ;;
+    esac
+}
+
+_scan_history_pattern() {
+    local severity="$1"
+    local category="$2"
+    local pattern="$3"
+    local matches_file="$TEMP_DIR/history-$category"
+    local status
+
+    [[ $HISTORY_MODE != none ]] || return 0
+
+    if git -C "$REPO_ROOT" log "${HISTORY_REVISIONS[@]}" \
+        --format= --name-only --regexp-ignore-case -G "$pattern" \
+        -- "$HISTORY_PATHSPEC" 2>/dev/null |
+        sed '/^$/d' |
+        sort -u > "$matches_file"; then
+        _consume_matches "$severity" "$category" git-history "$matches_file"
+    else
+        status=$?
+        [[ $status -eq 0 ]] || die "Git history scan failed for category: $category"
+    fi
+}
+
+_scan_history_filenames() {
+    local severity="$1"
+    local category="$2"
+    local pattern="$3"
+    local files_file="$TEMP_DIR/history-files"
+    local matches_file="$TEMP_DIR/history-filenames-$category"
+    local status
+
+    [[ $HISTORY_MODE != none ]] || return 0
+
+    if ! git -C "$REPO_ROOT" log "${HISTORY_REVISIONS[@]}" \
+        --format= --name-only -- "$HISTORY_PATHSPEC" 2>/dev/null |
+        sed '/^$/d' |
+        sort -u > "$files_file"; then
+        die 'unable to enumerate paths from Git history'
+    fi
+
+    if rg -i -e "$pattern" -- "$files_file" > "$matches_file"; then
+        _consume_matches "$severity" "$category" git-history "$matches_file"
+    else
+        status=$?
+        [[ $status -eq 1 ]] || die "Git history filename scan failed for category: $category"
+    fi
+}
+
+_scan_git_metadata() {
+    local git_dir
+    local matches_file
+    local status
+    local -a metadata_paths=()
+
+    [[ -n $REPO_ROOT ]] || return 0
+    git_dir=$(git -C "$REPO_ROOT" rev-parse --git-dir)
+    [[ $git_dir == /* ]] || git_dir="$REPO_ROOT/$git_dir"
+
+    [[ -f $git_dir/config ]] && metadata_paths+=("$git_dir/config")
+    [[ -d $git_dir/logs ]] && metadata_paths+=("$git_dir/logs")
+    [[ ${#metadata_paths[@]} -gt 0 ]] || return 0
+
+    matches_file="$TEMP_DIR/git-metadata-url-credentials"
+    if rg --text --files-with-matches \
+        -e '(https?|socks5?)://[^/@[:space:]]+:[^/@[:space:]]+@' \
+        -- "${metadata_paths[@]}" > "$matches_file" 2>/dev/null; then
+        _consume_matches HIGH url-credentials git-metadata "$matches_file"
+    else
+        status=$?
+        [[ $status -eq 1 ]] || die 'Git metadata credential scan failed'
+    fi
+
+    [[ $SCAN_PII == true ]] || return 0
+    matches_file="$TEMP_DIR/git-metadata-email"
+    if rg --text --files-with-matches -i \
+        -e '[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}' \
+        -- "${metadata_paths[@]}" > "$matches_file" 2>/dev/null; then
+        _consume_matches MEDIUM email-address git-metadata "$matches_file"
+    else
+        status=$?
+        [[ $status -eq 1 ]] || die 'Git metadata email scan failed'
+    fi
+}
+
+_scan_category() {
+    local severity="$1"
+    local category="$2"
+    local pattern="$3"
+
+    _scan_worktree_pattern "$severity" "$category" "$pattern"
+    _scan_history_pattern "$severity" "$category" "$pattern"
+}
+
+_scan_filename_category() {
+    local severity="$1"
+    local category="$2"
+    local pattern="$3"
+
+    _scan_worktree_filenames "$severity" "$category" "$pattern"
+    _scan_history_filenames "$severity" "$category" "$pattern"
+}
+
+_scan_secrets() {
+    local private_key_pattern
+    local provider_token_pattern
+    local url_credentials_pattern
+    local literal_secret_pattern
+    local product_key_pattern
+    local sensitive_filename_pattern
+    local firmware_dump_pattern
+
+    private_key_pattern='-----BEGIN (OPENSSH |RSA |EC |DSA |PGP )?PRIVATE KEY-----'
+    provider_token_pattern='AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-(ant-|proj-)?[A-Za-z0-9_-]{20,}|sk_live_[A-Za-z0-9]{20,}|rk_live_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'
+    url_credentials_pattern='(https?|socks5?)://[^/@[:space:]]+:[^/@[:space:]]+@'
+    literal_secret_pattern='(password|passwd|pwd|secret|api[_-]?key|access[_-]?key|auth[_-]?token|client[_-]?secret|private[_-]?key)[[:space:]]*[:=][[:space:]]*["'\'']?[A-Za-z0-9][A-Za-z0-9_./+=-]{5,}'
+    product_key_pattern='[A-Z0-9]{5}(-[A-Z0-9]{5}){4}'
+    sensitive_filename_pattern='(^|/)(\.env($|\.)|id_(rsa|ed25519|ecdsa)|[^/]*\.(pem|key|p12|pfx|jks|keystore|kdbx|ovpn|mobileconfig|age)|credentials?($|\.)|secrets?($|\.)|tokens?($|\.)|auth\.json$|cookies?($|\.)|\.netrc$|\.npmrc$|\.pypirc$|installation\.yaml$|user\.yaml$|[^/]*userdb[^/]*($|/)|sync/)|(^|/)msdm\.dat$'
+    firmware_dump_pattern='(^|/)(dsdt|acpi)/[^/]*\.(dat|bin|rom)$|(^|/)(dsdt|uefi|vfct|ssdt[0-9]*|facp|facs)\.(dat|bin|rom)$'
+
+    _scan_category HIGH private-key "$private_key_pattern"
+    _scan_category HIGH provider-token "$provider_token_pattern"
+    _scan_category HIGH url-credentials "$url_credentials_pattern"
+    _scan_category HIGH product-key "$product_key_pattern"
+    _scan_category MEDIUM literal-secret-assignment "$literal_secret_pattern"
+    _scan_filename_category HIGH sensitive-filename "$sensitive_filename_pattern"
+    _scan_filename_category MEDIUM firmware-dump "$firmware_dump_pattern"
+}
+
+_scan_pii() {
+    local email_pattern
+    local phone_pattern
+    local cn_id_pattern
+    local mac_pattern
+    local home_path_pattern
+    local identity_assignment_pattern
+
+    [[ $SCAN_PII == true ]] || return 0
+
+    email_pattern='[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+    phone_pattern='(^|[^0-9])1[3-9][0-9]{9}([^0-9]|$)'
+    cn_id_pattern='(^|[^0-9])[1-9][0-9]{5}(19|20)[0-9]{2}(0[1-9]|1[0-2])([0-2][0-9]|3[01])[0-9]{3}[0-9Xx]([^0-9]|$)'
+    mac_pattern='(^|[^0-9A-Fa-f])([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}([^0-9A-Fa-f]|$)'
+    home_path_pattern='/(home|Users)/[A-Za-z0-9._-]+'
+    identity_assignment_pattern='(ssid|hostname|host_name|device[_-]?name|installation_id|sync_dir)[[:space:]]*[:=][[:space:]]*[^[:space:]]+'
+
+    _scan_category MEDIUM email-address "$email_pattern"
+    _scan_category MEDIUM phone-number "$phone_pattern"
+    _scan_category HIGH cn-id-number "$cn_id_pattern"
+    _scan_category MEDIUM mac-address "$mac_pattern"
+    _scan_category MEDIUM home-directory "$home_path_pattern"
+    _scan_category MEDIUM device-identity "$identity_assignment_pattern"
+}
+
+_scan_low_confidence() {
+    local encoded_pattern
+    local ip_pattern
+    local uuid_pattern
+
+    [[ $SCAN_LOW_CONFIDENCE == true ]] || return 0
+
+    encoded_pattern='(^|[^A-Za-z0-9+/])([A-Za-z0-9+/]{40,}={0,2}|[0-9A-Fa-f]{48,})([^A-Za-z0-9+/]|$)'
+    ip_pattern='(^|[^0-9])((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])([^0-9]|$)'
+    uuid_pattern='[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[1-5][0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}'
+
+    _scan_category LOW encoded-secret-candidate "$encoded_pattern"
+    _scan_category LOW ip-address "$ip_pattern"
+    _scan_category LOW uuid-or-device-id "$uuid_pattern"
+}
+
+_print_report() {
+    local sorted_file="$TEMP_DIR/findings-sorted"
+    local finding_count
+    local high_count
+    local medium_count
+    local low_count
+
+    if [[ ! -s $FINDINGS_FILE ]]; then
+        msg 'No privacy-leak candidates found'
+        return 0
+    fi
+
+    sort -u "$FINDINGS_FILE" > "$sorted_file"
+    finding_count=$(wc -l < "$sorted_file")
+    high_count=$(awk -F '\t' '$1 == "HIGH" { count++ } END { print count + 0 }' "$sorted_file")
+    medium_count=$(awk -F '\t' '$1 == "MEDIUM" { count++ } END { print count + 0 }' "$sorted_file")
+    low_count=$(awk -F '\t' '$1 == "LOW" { count++ } END { print count + 0 }' "$sorted_file")
+
+    printf '\n%-7s  %-28s  %-13s  %s\n' RISK CATEGORY SCOPE PATH
+    printf '%-7s  %-28s  %-13s  %s\n' \
+        '-------' '----------------------------' '-------------' '----'
+    awk -F '\t' '{
+        printf "%-7s  %-28s  %-13s  %s\n", $1, $2, $3, $4
+    }' "$sorted_file"
+    printf '\nSummary: %s findings (%s high, %s medium, %s low)\n' \
+        "$finding_count" "$high_count" "$medium_count" "$low_count"
+    printf '%s\n' \
+        'Review candidates manually: patterns can produce false positives.' \
+        'No matched secret or personal value was printed.'
+
+    return 1
+}
+
+_parse_args() {
+    local -a positional_args=()
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --history)
+                [[ $# -ge 2 ]] || die '--history requires all, unpushed, or none'
+                HISTORY_MODE="$2"
+                shift 2
+                ;;
+            --no-ignored)
+                INCLUDE_IGNORED=false
+                shift
+                ;;
+            --no-pii)
+                SCAN_PII=false
+                shift
+                ;;
+            --no-low-confidence)
+                SCAN_LOW_CONFIDENCE=false
+                shift
+                ;;
+            --exclude)
+                [[ $# -ge 2 ]] || die '--exclude requires a glob'
+                EXCLUDE_GLOBS+=("$2")
+                shift 2
+                ;;
+            -h|--help)
+                _show_help
+                exit 0
+                ;;
+            --)
+                shift
+                positional_args+=("$@")
+                break
+                ;;
+            -*)
+                die "unknown option: $1"
+                ;;
+            *)
+                positional_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    [[ ${#positional_args[@]} -le 1 ]] || die 'accepts at most one PATH'
+    if [[ ${#positional_args[@]} -eq 1 ]]; then
+        TARGET="${positional_args[0]}"
+    fi
+
+    case "$HISTORY_MODE" in
+        all|unpushed|none)
+            ;;
+        *)
+            die "invalid history mode: $HISTORY_MODE"
+            ;;
+    esac
+
+    [[ -e $TARGET ]] || die "path does not exist: $TARGET"
+}
+
+_main() {
+    _parse_args "$@"
+    _require_command rg
+    _require_command realpath
+    _require_command sort
+    _require_command awk
+    _require_command sed
+    _require_command mktemp
+
+    TEMP_DIR=$(mktemp -d)
+    FINDINGS_FILE="$TEMP_DIR/findings"
+    : > "$FINDINGS_FILE"
+    trap _cleanup EXIT INT TERM
+
+    _prepare_git
+
+    msg "Scanning worktree: $(realpath -- "$TARGET")"
+    if [[ $HISTORY_MODE != none ]]; then
+        msg "Scanning Git history: $HISTORY_MODE"
+    fi
+
+    _scan_secrets
+    _scan_pii
+    _scan_low_confidence
+    _scan_git_metadata
+    _print_report
+}
+
+_main "$@"
