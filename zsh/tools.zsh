@@ -96,7 +96,6 @@ alias fgt="unset HISTFILE"
 alias mkp='mkdir -p'
 alias less="less -R" 
 alias ap="realpath -s"
-alias ee="vim"
 alias rmi="trash"
 
 mkpp() {
