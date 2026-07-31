@@ -1,1 +1,2 @@
 - DO NOT execute `find $HOME`, `find /`, you could only find in a small range.
+- DO NOT view git history automaticly, UNLESS user ask you to read them.
