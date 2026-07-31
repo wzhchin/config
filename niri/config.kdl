@@ -435,6 +435,7 @@ binds {
 
     // Suggested binds for running programs: terminal, app launcher, screen locker.
     Mod+Return { spawn "foot"; }
+    Mod+X { spawn "emacs"; }
     Mod+D { spawn "rglauncher" "-t" "app,win,calc"; }
     Mod+S { spawn "rglauncher" "-t" "clip"; }
     Super+Alt+L { spawn "swaylock"; }
