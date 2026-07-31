@@ -263,7 +263,7 @@ prompt_chin_precmd() {
 
     local git_placeholder=""
     if git rev-parse --git-dir &>/dev/null; then
-        git_placeholder=" %F{90}(…)%f"
+        git_placeholder=" %F{90}(...)%f"
     fi
 
     PROMPT="${PROMPT_CHIN_HEAD}${git_placeholder}${PROMPT_CHIN_TAIL}"
