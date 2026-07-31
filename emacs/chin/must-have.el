@@ -29,6 +29,9 @@
 (evil-mode 1)
 (setq evil-mode-line-format '(before . mode-line-front-space))
 
+(declare-function eglot-code-actions "eglot")
+(declare-function eglot-rename "eglot")
+
 (defvar-keymap chin/evil-find-map
   :doc "Leader bindings for finding files and text."
   "b" #'consult-buffer
@@ -71,6 +74,47 @@
   (kbd "M-.") #'xref-find-definitions)
 (evil-define-key 'visual 'global
   (kbd "DEL") #'delete-region)
+
+(declare-function markdown-ts-outline-cycle "markdown-ts-mode")
+(defun chin/markdown-insert-timestamp ()
+  "Insert an inactive Org-style timestamp in Markdown."
+  (interactive)
+  (insert (format-time-string "[%Y-%m-%d %a]")))
+
+(defun chin/markdown-cycle-heading-todo ()
+  "Cycle the current Markdown heading through TODO and DONE states."
+  (interactive)
+  (save-excursion
+    (beginning-of-line)
+    (unless (looking-at
+             "\\(#[#]\\{0,5\\}\\)[[:blank:]]+\\(?:\\(TODO\\|DONE\\)[[:blank:]]+\\)?")
+      (user-error "Point is not on a Markdown heading"))
+    (let ((heading-end (match-end 1))
+          (state (match-string-no-properties 2)))
+      (delete-region heading-end (match-end 0))
+      (goto-char heading-end)
+      (insert (pcase state
+                ("TODO" " DONE ")
+                ("DONE" " ")
+                (_ " TODO "))))))
+
+(with-eval-after-load 'markdown-ts-mode
+  ;; Evil handles TAB as C-i in normal state, hiding Markdown's Org-like
+  ;; outline cycling.  Bind both terminal and GUI Tab events mode-locally.
+  (evil-define-key 'normal markdown-ts-mode-map
+    (kbd "TAB") #'markdown-ts-outline-cycle
+    (kbd "<tab>") #'markdown-ts-outline-cycle)
+  (keymap-set markdown-ts-mode-map "C-c ."
+              #'chin/markdown-insert-timestamp)
+  (keymap-set markdown-ts-mode-map "C-c C-t"
+              #'chin/markdown-cycle-heading-todo))
+
+(declare-function evil-collection-init "evil-collection")
+(with-eval-after-load 'dired
+  ;; Load Evil Collection only for file-management modes.  This keeps the
+  ;; broader configuration minimal while retaining Dired's complete Evil UI.
+  (require 'evil-collection)
+  (evil-collection-init '(dired wdired)))
 
 (require 'vertico)
 (vertico-mode 1)

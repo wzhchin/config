@@ -1,93 +1,28 @@
 ;; -*- lexical-binding: t; -*-
 
-;; 注: 从 pdump 启动时 early-init.el 的 load-time 代码不会重新执行
-;; (只有 after-pdump-load-hook 会跑), 所以 load-path 的恢复不能放这里 ——
-;; 见 init.el 里的 after-pdump-load-hook 注册。
+;; Avoid blocking on terminal capability probes when an SSH terminal does not
+;; answer xterm queries.  Without this, Emacs may redisplay *scratch* while it
+;; waits before opening a command-line file.
+(when (and (null window-system)
+           (getenv "SSH_CONNECTION"))
+  (setq xterm-extra-capabilities nil
+        xterm-mouse-mode-called t))
+
 (menu-bar-mode -1)
-;; (scroll-bar-mode -1 ) 
+(scroll-bar-mode -1 ) 
 
 (setq-default truncate-lines nil)
 (setq truncate-partial-width-windows nil)
-
-(setq byte-compile-warnings nil)
 
 (setq package-enable-at-startup nil
       package-quickstart nil)
 (add-hook 'emacs-startup-hook
           (lambda ()
-            (setq file-name-handler-alist
-                  chin/startup-file-name-handler-alist
-                  gc-cons-threshold (* 16 1024 1024)
-                  gc-cons-percentage 0.1)
-            (message "Emacs ready in %.2f seconds with %d garbage collections."
-                     (float-time
-                      (time-subtract after-init-time before-init-time))
-                     gcs-done))
+            (setq gc-cons-threshold (* 16 1024 1024)
+                  gc-cons-percentage 0.1))
           t)
 
-;; (setq x-gtk-stock-map '(("etc/images/new" . "n:emacs-new")
-;;                         ("etc/images/open" . "n:emacs-open")
-;;                         ("etc/images/diropen" . "n:emacs-diropen")
-;;                         ("etc/images/close" . "n:emacs-close")
-;;                         ("etc/images/save" . "n:emacs-save")
-;;                         ("etc/images/saveas" . "n:emacs-save-as")
-;;                         ("etc/images/undo" . "n:emacs-undo")
-;;                         ("etc/images/cut" . "n:emacs-cut")
-;;                         ("etc/images/copy" . "n:emacs-copy")
-;;                         ("etc/images/paste" . "n:emacs-paste")
-;;                         ("etc/images/search" . "n:emacs-search")
-;;                         ("etc/images/print" . "n:emacs-print")
-;;                         ("etc/images/preferences" . "n:emacs-preferences")
-;;                         ("etc/images/help" . "n:emacs-help")
-;;                         ("etc/images/left-arrow" . "n:emacs-back-arrow")
-;;                         ("etc/images/right-arrow" . "n:emacs-fwd-arrow")
-;;                         ("etc/images/home" . "n:emacs-home")
-;;                         ("etc/images/jump-to" . "n:emacs-jump-to")
-;;                         ("etc/images/index" . "n:emacs-index")
-;;                         ("etc/images/exit" . "n:emacs-exit")
-;;                         ("etc/images/cancel" . "n:emacs-cancel")
-;;                         ("etc/images/info" . "n:emacs-info")
-;;                         ("etc/images/bookmark_add" . "n:bookmark_add")
-;;                         ("etc/images/attach" . "n:emacs-attach")
-;;                         ("etc/images/connect" . "n:emacs-connect")
-;;                         ("etc/images/contact" . "n:emacs-contact")
-;;                         ("etc/images/delete" . "n:emacs-delete")
-;;                         ("etc/images/describe" . "n:emacs-properties")
-;;                         ("etc/images/disconnect" . "n:emacs-disconnect")
-;;                         ("etc/images/lock-broken" . "n:emacs-lock_broken")
-;;                         ("etc/images/lock-ok" . "n:emacs-lock_ok")
-;;                         ("etc/images/lock" . "n:emacs-lock")
-;;                         ("etc/images/next-page" . "n:emacs-next-page")
-;;                         ("etc/images/refresh" . "n:emacs-refresh")
-;;                         ("etc/images/search-replace" . "n:emacs-search-replace")
-;;                         ("etc/images/sort-ascending" . "n:emacs-sort-ascending")
-;;                         ("etc/images/sort-column-ascending" . "n:emacs-sort-column-ascending")
-;;                         ("etc/images/sort-criteria" . "n:emacs-sort-criteria")
-;;                         ("etc/images/sort-descending" . "n:emacs-sort-descending")
-;;                         ("etc/images/sort-row-ascending" . "n:emacs-sort-row-ascending")
-;;                         ("etc/images/spell" . "n:emacs-spell-check")
-;;                         ("images/gnus/toggle-subscription" . "n:emacs-task-recurring")
-;;                         ("images/mail/compose" . "n:emacs-mail-compose")
-;;                         ("images/mail/copy" . "n:emacs-mail-copy")
-;;                         ("images/mail/forward" . "n:emacs-mail-forward")
-;;                         ("images/mail/inbox" . "n:emacs-inbox")
-;;                         ("images/mail/move" . "n:emacs-mail-move")
-;;                         ("images/mail/not-spam" . "n:emacs-not-spam")
-;;                         ("images/mail/outbox" . "n:emacs-outbox")
-;;                         ("images/mail/reply-all" . "n:emacs-mail-reply-to-all")
-;;                         ("images/mail/reply" . "n:emacs-mail-reply")
-;;                         ("images/mail/save-draft" . "n:emacs-mail-handling")
-;;                         ("images/mail/send" . "n:emacs-mail-send")
-;;                         ("images/mail/spam" . "n:emacs-spam")
-;;                         ("images/gud/break" . "n:emacs-no")
-;;                         ("images/gud/recstart" . "n:emacs-media-record")
-;;                         ("images/gud/recstop" . "n:emacs-media-stop")))
-
-
-(defvar chin/startup-file-name-handler-alist file-name-handler-alist)
-
-(setq file-name-handler-alist nil
-      message-log-max 16384
+(setq message-log-max 16384
       gc-cons-threshold most-positive-fixnum
       gc-cons-percentage 0.6
       inhibit-splash-screen t

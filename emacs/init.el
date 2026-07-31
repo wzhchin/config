@@ -32,7 +32,7 @@
         #'file-directory-p
         (directory-files package-user-dir t "\\`[^.]" t))))
   (dolist (package '(compat goto-chg evil vertico comment-dwim-2
-                     expand-region corfu consult markdown-ts-mode))
+                     evil-collection expand-region corfu consult))
     (chin/add-package-to-load-path package installed-directories)))
 
 (add-to-list 'load-path (expand-file-name "lisp" user-emacs-directory))
