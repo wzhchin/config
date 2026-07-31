@@ -9,7 +9,8 @@
         xterm-mouse-mode-called t))
 
 (menu-bar-mode -1)
-(scroll-bar-mode -1 ) 
+(tool-bar-mode -1)
+(scroll-bar-mode -1)
 
 (setq-default truncate-lines nil)
 (setq truncate-partial-width-windows nil)
@@ -28,4 +29,6 @@
       inhibit-splash-screen t
       inhibit-startup-screen t
       inhibit-startup-message t
+      initial-scratch-message nil
+      initial-major-mode 'fundamental-mode
       auto-window-vscroll nil)

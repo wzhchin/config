@@ -2,6 +2,7 @@
 
 ;;; Custom file
 (setq custom-file (expand-file-name "custom.el" user-emacs-directory))
+(load custom-file 'noerror 'nomessage)
 
 ;;; Packages
 (defvar package-archives)
@@ -11,7 +12,8 @@
 
 (defun chin/add-package-to-load-path (package installed-directories)
   "Add the newest installed version of PACKAGE to `load-path'."
-  (let* ((prefix (concat "\\`" (regexp-quote (symbol-name package)) "-[0-9]"))
+  (let* ((package-prefix (concat (symbol-name package) "-"))
+         (prefix (concat "\\`" (regexp-quote package-prefix) "[0-9]"))
          (directories
           (seq-filter
            (lambda (directory)
@@ -20,8 +22,11 @@
          (newest
           (car (sort directories
                      (lambda (left right)
-                       (string> (file-name-nondirectory left)
-                                (file-name-nondirectory right)))))))
+                       (version<
+                        (substring (file-name-nondirectory right)
+                                   (length package-prefix))
+                        (substring (file-name-nondirectory left)
+                                   (length package-prefix))))))))
     (unless newest
       (error "Required package is not installed: %s" package))
     (add-to-list 'load-path newest)))

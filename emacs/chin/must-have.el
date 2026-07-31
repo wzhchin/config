@@ -9,8 +9,6 @@
 (setq inhibit-splash-screen t
       inhibit-startup-screen t
       inhibit-startup-message t
-      initial-scratch-message nil
-      initial-major-mode 'fundamental-mode
       ring-bell-function #'ignore)
 (show-paren-mode 1)
 
@@ -76,6 +74,7 @@
   (kbd "DEL") #'delete-region)
 
 (declare-function markdown-ts-outline-cycle "markdown-ts-mode")
+(defvar markdown-ts-mode-map)
 (defun chin/markdown-insert-timestamp ()
   "Insert an inactive Org-style timestamp in Markdown."
   (interactive)
@@ -151,14 +150,16 @@
   "Delete whitespace around point.
 With INSERT-BLANK-P non-nil, do not insert a replacement space."
   (interactive)
-  (let* ((end-pos (progn
-                    (back-to-indentation)
-                    (point)))
-         (start-pos (1+ (search-backward-regexp "[^\n[:space:]]"))))
-    (delete-region start-pos end-pos)
-    (forward-char)
-    (unless insert-blank-p
-      (insert " "))))
+  (let ((end-pos (progn
+                   (back-to-indentation)
+                   (point))))
+    (skip-chars-backward " \t\n")
+    (let ((start-pos (point)))
+      (delete-region start-pos end-pos)
+      (unless (or insert-blank-p
+                  (= start-pos (point-min))
+                  (= start-pos end-pos))
+        (insert " ")))))
 
 (defun chin/move-beginning-of-line ()
   "Move to indentation, or to the beginning of line when already there."
