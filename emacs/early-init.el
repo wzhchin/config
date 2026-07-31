@@ -11,9 +11,12 @@
 (menu-bar-mode -1)
 (tool-bar-mode -1)
 (scroll-bar-mode -1)
+(add-to-list 'default-frame-alist '(internal-border-width . 12))
 
 (setq-default truncate-lines nil)
-(setq truncate-partial-width-windows nil)
+(setq truncate-partial-width-windows nil
+      scroll-step 1
+      scroll-conservatively 10000)
 
 (setq package-enable-at-startup nil
       package-quickstart nil)
