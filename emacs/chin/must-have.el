@@ -28,9 +28,45 @@
 (require 'evil)
 (evil-mode 1)
 (setq evil-mode-line-format '(before . mode-line-front-space))
+
+(defvar-keymap chin/evil-find-map
+  :doc "Leader bindings for finding files and text."
+  "b" #'consult-buffer
+  "f" #'find-file
+  "g" #'consult-ripgrep
+  "l" #'consult-line)
+
+(defvar-keymap chin/evil-buffer-map
+  :doc "Leader bindings for buffers."
+  "b" #'consult-buffer
+  "d" #'kill-current-buffer)
+
+(defvar-keymap chin/evil-code-map
+  :doc "Leader bindings for code actions."
+  "a" #'eglot-code-actions
+  "r" #'eglot-rename)
+
+(defvar-keymap chin/evil-leader-map
+  :doc "Leader keymap used from Evil normal state."
+  "?" #'describe-prefix-bindings
+  "b" chin/evil-buffer-map
+  "c" chin/evil-code-map
+  "f" chin/evil-find-map
+  "q" #'quit-window
+  "w" #'save-buffer
+  "x" #'kill-current-buffer)
+
 (evil-define-key 'normal 'global
+  (kbd "SPC") chin/evil-leader-map
+  (kbd "C-h") #'windmove-left
+  (kbd "C-j") #'windmove-down
+  (kbd "C-k") #'windmove-up
+  (kbd "C-l") #'windmove-right
   (kbd "C-e") #'end-of-line
   (kbd "C-r") #'isearch-backward
+  (kbd "g d") #'xref-find-definitions
+  (kbd "g r") #'xref-find-references
+  (kbd "K") #'eldoc-doc-buffer
   (kbd "U") #'evil-redo
   (kbd "M-.") #'xref-find-definitions)
 (evil-define-key 'visual 'global
