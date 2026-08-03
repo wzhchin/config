@@ -458,59 +458,67 @@ def _glm_print_limit(label: str, entry: dict) -> None:
     usage_row(label, pct, reset_ms=reset, hint=win)
 
 
-def do_glm() -> int:
-    api_key = _credential("GLM_API_KEY")
-    # Default to the mainland-China endpoint (open.bigmodel.cn). Set
-    # GLM_REGION=global for the international api.z.ai endpoint.
-    region = os.environ.get("GLM_REGION") or "cn"
+class GLMProvider:
+    """GLM / z.ai (智谱) quota windows."""
 
-    host_override = (os.environ.get("GLM_API_HOST") or "").strip()
-    if host_override:
-        host = host_override.rstrip("/")
-        if not host.startswith("http"):
-            host = "https://" + host
-    elif region in ("global", "zai"):
-        host = "https://api.z.ai"
-    else:
-        host = "https://open.bigmodel.cn"
-    url = f"{host}/api/monitor/usage/quota/limit"
+    name = "GLM"
 
-    if not api_key:
-        raise _Skip()
+    def prefetch(self) -> None:
+        self.api_key = _credential("GLM_API_KEY")
 
-    status, body = http_get_json(url, bearer=api_key)
-    if status != 200 or not isinstance(body, dict):
-        raise ProviderError(f"request failed (HTTP {status}): "
-                            f"{body if not isinstance(body, dict) else body.get('msg', '')}")
-    if not (body.get("success") is True and body.get("code") == 200):
-        raise ProviderError(f"API error: {body.get('msg', 'code ' + str(body.get('code')))}.")
-    data = body.get("data") or {}
-    limits = data.get("limits") or []
+    def do_work(self) -> int:
+        api_key = self.api_key
+        # Default to the mainland-China endpoint (open.bigmodel.cn). Set
+        # GLM_REGION=global for the international api.z.ai endpoint.
+        region = os.environ.get("GLM_REGION") or "cn"
 
-    plan = next((data.get(k) for k in ("planName", "plan", "plan_type", "packageName")
-                 if data.get(k)), None)
-    plan = plan.strip() if isinstance(plan, str) else None
-    host_short = host.removeprefix("https://").removeprefix("http://")
+        host_override = (os.environ.get("GLM_API_HOST") or "").strip()
+        if host_override:
+            host = host_override.rstrip("/")
+            if not host.startswith("http"):
+                host = "https://" + host
+        elif region in ("global", "zai"):
+            host = "https://api.z.ai"
+        else:
+            host = "https://open.bigmodel.cn"
+        url = f"{host}/api/monitor/usage/quota/limit"
 
-    header("GLM", plan, host_short)
+        if not api_key:
+            raise _Skip()
 
-    token_limits = [e for e in limits if e.get("type") == "TOKENS_LIMIT"]
-    time_limits = [e for e in limits if e.get("type") == "TIME_LIMIT"]
+        status, body = http_get_json(url, bearer=api_key)
+        if status != 200 or not isinstance(body, dict):
+            raise ProviderError(f"request failed (HTTP {status}): "
+                                f"{body if not isinstance(body, dict) else body.get('msg', '')}")
+        if not (body.get("success") is True and body.get("code") == 200):
+            raise ProviderError(f"API error: {body.get('msg', 'code ' + str(body.get('code')))}.")
+        data = body.get("data") or {}
+        limits = data.get("limits") or []
 
-    if token_limits:
-        # shortest window first (session), longest last (quota)
-        token_limits.sort(key=lambda e: _glm_window_minutes(e) or float("inf"))
-        _glm_print_limit("session", token_limits[0])
-        if len(token_limits) >= 2:
-            _glm_print_limit("quota", token_limits[-1])
+        plan = next((data.get(k) for k in ("planName", "plan", "plan_type", "packageName")
+                     if data.get(k)), None)
+        plan = plan.strip() if isinstance(plan, str) else None
+        host_short = host.removeprefix("https://").removeprefix("http://")
 
-    for entry in time_limits:
-        # MCP monthly marker is a 1-minute sentinel; label all TIME_LIMIT as monthly.
-        _glm_print_limit("monthly", entry)
+        header("GLM", plan, host_short)
 
-    if not token_limits and not time_limits:
-        note("no rate-limit entries returned")
-    return 0
+        token_limits = [e for e in limits if e.get("type") == "TOKENS_LIMIT"]
+        time_limits = [e for e in limits if e.get("type") == "TIME_LIMIT"]
+
+        if token_limits:
+            # shortest window first (session), longest last (quota)
+            token_limits.sort(key=lambda e: _glm_window_minutes(e) or float("inf"))
+            _glm_print_limit("session", token_limits[0])
+            if len(token_limits) >= 2:
+                _glm_print_limit("quota", token_limits[-1])
+
+        for entry in time_limits:
+            # MCP monthly marker is a 1-minute sentinel; label all TIME_LIMIT as monthly.
+            _glm_print_limit("monthly", entry)
+
+        if not token_limits and not time_limits:
+            note("no rate-limit entries returned")
+        return 0
 
 
 # --------------------------------------------------------------------------- #
@@ -582,90 +590,99 @@ def _sum_usage(node, *, only_type=None) -> float:
     return total
 
 
-def do_deepseek() -> int:
-    api_key = _credential("DEEPSEEK_API_KEY")
-    session_key = _credential("DEEPSEEK_SESSION_KEY")
-    if not api_key:
-        raise _Skip()
+class DeepSeekProvider:
+    """DeepSeek balance + monthly token/cost usage."""
 
-    # --- balance ---
-    status, body = http_get_json("https://api.deepseek.com/user/balance", bearer=api_key)
-    if status != 200 or not isinstance(body, dict):
-        raise ProviderError(f"balance request failed (HTTP {status}).")
+    name = "DeepSeek"
 
-    infos = body.get("balance_infos") or []
-    avail = body.get("is_available")
-    bal_meta = None
-    bal_detail = None
-    if infos:
-        info = infos[0]
-        currency = info.get("currency", "USD")
-        sym = "¥" if currency == "CNY" else "$"
-        try:
-            total = float(info.get("total_balance", 0))
-            granted = float(info.get("granted_balance", 0))
-            topped = float(info.get("topped_up_balance", 0))
-        except (TypeError, ValueError):
-            total = granted = topped = 0.0
-        if total <= 0:
-            bal_meta = f"{sym}0.00"
-            bal_detail = "add credits at platform.deepseek.com"
-        elif avail is not True:
-            bal_meta = "unavailable"
-            bal_detail = "balance not available for API calls"
+    def prefetch(self) -> None:
+        self.api_key = _credential("DEEPSEEK_API_KEY")
+        self.session_key = _credential("DEEPSEEK_SESSION_KEY")
+
+    def do_work(self) -> int:
+        api_key = self.api_key
+        session_key = self.session_key
+        if not api_key:
+            raise _Skip()
+
+        # --- balance ---
+        status, body = http_get_json("https://api.deepseek.com/user/balance", bearer=api_key)
+        if status != 200 or not isinstance(body, dict):
+            raise ProviderError(f"balance request failed (HTTP {status}).")
+
+        infos = body.get("balance_infos") or []
+        avail = body.get("is_available")
+        bal_meta = None
+        bal_detail = None
+        if infos:
+            info = infos[0]
+            currency = info.get("currency", "USD")
+            sym = "¥" if currency == "CNY" else "$"
+            try:
+                total = float(info.get("total_balance", 0))
+                granted = float(info.get("granted_balance", 0))
+                topped = float(info.get("topped_up_balance", 0))
+            except (TypeError, ValueError):
+                total = granted = topped = 0.0
+            if total <= 0:
+                bal_meta = f"{sym}0.00"
+                bal_detail = "add credits at platform.deepseek.com"
+            elif avail is not True:
+                bal_meta = "unavailable"
+                bal_detail = "balance not available for API calls"
+            else:
+                bal_meta = f"{sym}{total:.2f}"
+                bal_detail = f"paid {sym}{topped:.2f} · granted {sym}{granted:.2f}"
         else:
-            bal_meta = f"{sym}{total:.2f}"
-            bal_detail = f"paid {sym}{topped:.2f} · granted {sym}{granted:.2f}"
-    else:
-        bal_meta = "—"
+            bal_meta = "—"
 
-    header("DeepSeek")
-    if bal_detail:
-        kv("detail", bal_detail)
+        header("DeepSeek")
+        if bal_detail:
+            kv("detail", bal_detail)
 
-    # --- monthly usage (amount + cost) ---
-    now = _dt.datetime.now(_dt.timezone.utc)
-    month, year = now.month, now.year
-    today = now.strftime("%Y-%m-%d")
+        # --- monthly usage (amount + cost) ---
+        now = _dt.datetime.now(_dt.timezone.utc)
+        month, year = now.month, now.year
+        today = now.strftime("%Y-%m-%d")
 
-    amount_url = (f"https://platform.deepseek.com/api/v0/usage/amount"
-                  f"?month={month}&year={year}")
-    cost_url = (f"https://platform.deepseek.com/api/v0/usage/cost"
-                f"?month={month}&year={year}")
+        amount_url = (f"https://platform.deepseek.com/api/v0/usage/amount"
+                      f"?month={month}&year={year}")
+        cost_url = (f"https://platform.deepseek.com/api/v0/usage/cost"
+                    f"?month={month}&year={year}")
 
-    extra_headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) "
-            "Gecko/20100101 Firefox/152.0"
-        )
-    }
-    amt_status, amt = http_get_json(amount_url, bearer=session_key, headers=extra_headers)
-    cost_status, cost = http_get_json(cost_url, bearer=session_key, headers=extra_headers)
+        extra_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) "
+                "Gecko/20100101 Firefox/152.0"
+            )
+        }
+        amt_status, amt = http_get_json(amount_url, bearer=session_key, headers=extra_headers)
+        cost_status, cost = http_get_json(cost_url, bearer=session_key, headers=extra_headers)
 
-    if amt_status != 200 or not isinstance(amt, dict):
-        note(f"usage unavailable (HTTP {amt_status})")
+        if amt_status != 200 or not isinstance(amt, dict):
+            note(f"usage unavailable (HTTP {amt_status})")
+            return 0
+
+        month_tokens = _deepseek_sum_totals(amt)
+        month_tokens_int = int(month_tokens)
+        month_cost = _deepseek_sum_totals(cost) if isinstance(cost, dict) else 0.0
+        month_req = int(_deepseek_sum_totals(amt, only_type="REQUEST"))
+        cost_currency = "CNY"
+        if isinstance(cost, dict):
+            biz = (cost.get("data") or {}).get("biz_data") or []
+            if biz and isinstance(biz[0], dict):
+                cost_currency = biz[0].get("currency", "CNY")
+        csym = "¥" if cost_currency == "CNY" else "$"
+
+        today_tokens = _deepseek_sum_totals(amt, daily_date=today)
+        today_cost = _deepseek_sum_totals(cost, daily_date=today) if isinstance(cost, dict) else 0.0
+
+        if month_tokens_int > 0:
+            req_part = f" · {fmt_int(month_req)} req" if month_req else ""
+            kv("month", f"{fmt_int(month_tokens_int)} tok · {csym}{month_cost:.2f}{req_part}")
+        if int(today_tokens) > 0:
+            kv("today", f"{fmt_int(int(today_tokens))} tok · {csym}{today_cost:.2f}")
         return 0
-
-    month_tokens = _deepseek_sum_totals(amt)
-    month_tokens_int = int(month_tokens)
-    month_cost = _deepseek_sum_totals(cost) if isinstance(cost, dict) else 0.0
-    month_req = int(_deepseek_sum_totals(amt, only_type="REQUEST"))
-    cost_currency = "CNY"
-    if isinstance(cost, dict):
-        biz = (cost.get("data") or {}).get("biz_data") or []
-        if biz and isinstance(biz[0], dict):
-            cost_currency = biz[0].get("currency", "CNY")
-    csym = "¥" if cost_currency == "CNY" else "$"
-
-    today_tokens = _deepseek_sum_totals(amt, daily_date=today)
-    today_cost = _deepseek_sum_totals(cost, daily_date=today) if isinstance(cost, dict) else 0.0
-
-    if month_tokens_int > 0:
-        req_part = f" · {fmt_int(month_req)} req" if month_req else ""
-        kv("month", f"{fmt_int(month_tokens_int)} tok · {csym}{month_cost:.2f}{req_part}")
-    if int(today_tokens) > 0:
-        kv("today", f"{fmt_int(int(today_tokens))} tok · {csym}{today_cost:.2f}")
-    return 0
 
 
 # --------------------------------------------------------------------------- #
@@ -724,77 +741,87 @@ def _codex_print_window(label: str, window: dict) -> None:
     usage_row(label, pct, reset=reset, hint=None if reset else win)
 
 
-def do_codex() -> int:
-    auth_file = os.path.join(_codex_home(), "auth.json")
-    if not os.path.isfile(auth_file):
-        raise _Skip()
-    try:
-        with open(auth_file, "r", encoding="utf-8") as f:
-            auth = json.load(f)
-    except (OSError, ValueError) as e:
-        raise ProviderError(f"failed to read auth.json: {e}")
+class CodexProvider:
+    """OpenAI Codex OAuth usage windows (reads ~/.codex/auth.json)."""
 
-    tokens = auth.get("tokens") or {}
-    access = (auth.get("OPENAI_API_KEY")
-              or tokens.get("access_token")
-              or tokens.get("accessToken"))
-    if not access:
-        raise ProviderError(f"no access token in {auth_file} (re-run 'codex login').")
-    account = tokens.get("account_id") or tokens.get("accountId")
+    name = "Codex"
 
-    base = _codex_base_url()
-    path = "/wham/usage" if "backend-api" in base else "/api/codex/usage"
-    url = base + path
+    def prefetch(self) -> None:
+        # Credentials come from a local file, not pass-sliver —
+        # nothing to resolve ahead of the concurrent run.
+        pass
 
-    headers = {}
-    if account:
-        headers["ChatGPT-Account-Id"] = account
+    def do_work(self) -> int:
+        auth_file = os.path.join(_codex_home(), "auth.json")
+        if not os.path.isfile(auth_file):
+            raise _Skip()
+        try:
+            with open(auth_file, "r", encoding="utf-8") as f:
+                auth = json.load(f)
+        except (OSError, ValueError) as e:
+            raise ProviderError(f"failed to read auth.json: {e}")
 
-    status, body = http_get_json(url, bearer=access, headers=headers)
-    if status == 401 or status == 403:
-        raise ProviderError("token expired or invalid (run 'codex login').")
-    if status != 200 or not isinstance(body, dict):
-        detail = body if not isinstance(body, dict) else ""
-        raise ProviderError(f"usage request failed (HTTP {status}) {detail}".rstrip())
+        tokens = auth.get("tokens") or {}
+        access = (auth.get("OPENAI_API_KEY")
+                  or tokens.get("access_token")
+                  or tokens.get("accessToken"))
+        if not access:
+            raise ProviderError(f"no access token in {auth_file} (re-run 'codex login').")
+        account = tokens.get("account_id") or tokens.get("accountId")
 
-    plan = body.get("plan_type")
-    meta = []
-    if plan:
-        meta.append(str(plan))
+        base = _codex_base_url()
+        path = "/wham/usage" if "backend-api" in base else "/api/codex/usage"
+        url = base + path
 
-    credits = body.get("credits") or {}
-    if credits.get("unlimited"):
-        meta.append("credits ∞")
-    elif credits.get("balance") is not None:
-        meta.append(f"credits {credits['balance']}")
-    elif credits.get("has_credits"):
-        meta.append("credits available")
+        headers = {}
+        if account:
+            headers["ChatGPT-Account-Id"] = account
 
-    header("Codex", *meta)
+        status, body = http_get_json(url, bearer=access, headers=headers)
+        if status == 401 or status == 403:
+            raise ProviderError("token expired or invalid (run 'codex login').")
+        if status != 200 or not isinstance(body, dict):
+            detail = body if not isinstance(body, dict) else ""
+            raise ProviderError(f"usage request failed (HTTP {status}) {detail}".rstrip())
 
-    rate_limit = body.get("rate_limit") or {}
-    primary = rate_limit.get("primary_window")
-    secondary = rate_limit.get("secondary_window")
-    if primary:
-        _codex_print_window("primary", primary)
-    if secondary:
-        _codex_print_window("weekly", secondary)
+        plan = body.get("plan_type")
+        meta = []
+        if plan:
+            meta.append(str(plan))
 
-    extras = body.get("additional_rate_limits") or []
-    for extra in extras:
-        if not isinstance(extra, dict):
-            continue
-        name = extra.get("limit_name") or extra.get("metered_feature") or "extra"
-        # Keep extra labels short for the fixed column.
-        if isinstance(name, str) and len(name) > _LABEL_W:
-            name = name[:_LABEL_W - 1] + "…"
-        rl = (extra.get("rate_limit") or {}).get("primary_window")
-        if rl:
-            _codex_print_window(name, rl)
+        credits = body.get("credits") or {}
+        if credits.get("unlimited"):
+            meta.append("credits ∞")
+        elif credits.get("balance") is not None:
+            meta.append(f"credits {credits['balance']}")
+        elif credits.get("has_credits"):
+            meta.append("credits available")
 
-    if not primary and not secondary and not extras:
-        note("no rate-limit windows in response")
-    return 0
+        header("Codex", *meta)
+
+        rate_limit = body.get("rate_limit") or {}
+        primary = rate_limit.get("primary_window")
+        secondary = rate_limit.get("secondary_window")
+        if primary:
+            _codex_print_window("primary", primary)
+        if secondary:
+            _codex_print_window("weekly", secondary)
+
+        extras = body.get("additional_rate_limits") or []
+        for extra in extras:
+            if not isinstance(extra, dict):
+                continue
+            name = extra.get("limit_name") or extra.get("metered_feature") or "extra"
+            # Keep extra labels short for the fixed column.
+            if isinstance(name, str) and len(name) > _LABEL_W:
+                name = name[:_LABEL_W - 1] + "…"
+            rl = (extra.get("rate_limit") or {}).get("primary_window")
+            if rl:
+                _codex_print_window(name, rl)
+
+        if not primary and not secondary and not extras:
+            note("no rate-limit windows in response")
+        return 0
 
 
 # --------------------------------------------------------------------------- #
@@ -1165,23 +1192,33 @@ def _grok_fetch_web_billing(access_token: str) -> tuple[float, float | None]:
     return _grok_parse_billing(data)
 
 
-def do_grok() -> int:
-    creds = _grok_load_credentials()
-    pct, resets_at = _grok_fetch_web_billing(creds["access_token"])
+class GrokProvider:
+    """xAI Grok Build credit usage (reads ~/.grok/auth.json)."""
 
-    method = _grok_login_method(creds.get("auth_mode"))
-    email = creds.get("email")
-    meta = []
-    if method:
-        meta.append(method)
-    #if isinstance(email, str) and email:
-    #    meta.append(email)
-    header("Grok", *meta)
+    name = "Grok"
 
-    label = _grok_primary_label(resets_at).lower()
-    usage_row(label, round(pct, 1) if pct is not None else None,
-              reset=int(resets_at) if resets_at else None)
-    return 0
+    def prefetch(self) -> None:
+        # Credentials come from a local file, not pass-sliver —
+        # nothing to resolve ahead of the concurrent run.
+        pass
+
+    def do_work(self) -> int:
+        creds = _grok_load_credentials()
+        pct, resets_at = _grok_fetch_web_billing(creds["access_token"])
+
+        method = _grok_login_method(creds.get("auth_mode"))
+        email = creds.get("email")
+        meta = []
+        if method:
+            meta.append(method)
+        #if isinstance(email, str) and email:
+        #    meta.append(email)
+        header("Grok", *meta)
+
+        label = _grok_primary_label(resets_at).lower()
+        usage_row(label, round(pct, 1) if pct is not None else None,
+                  reset=int(resets_at) if resets_at else None)
+        return 0
 
 
 # --------------------------------------------------------------------------- #
@@ -1297,15 +1334,14 @@ def _emit_block(text: str) -> None:
 
 
 def do_all() -> int:
-    # Fire every provider at once; print a block as soon as its future completes.
+    # Resolve every pass-sliver credential sequentially first, so the worker
+    # threads below never race on the password-store / gpg-agent subprocess.
     # Skipped providers (no credentials) produce nothing. Completion order is
     # network-dependent — not the declaration order below.
-    providers = [
-        ("GLM", do_glm),
-        ("DeepSeek", do_deepseek),
-        ("Codex", do_codex),
-        ("Grok", do_grok),
-    ]
+    providers = [GLMProvider(), DeepSeekProvider(), CodexProvider(), GrokProvider()]
+    for p in providers:
+        p.prefetch()
+
     _install_stdout_proxy()
     ok = 0
     with concurrent.futures.ThreadPoolExecutor(
@@ -1313,8 +1349,8 @@ def do_all() -> int:
         thread_name_prefix="llm-limits",
     ) as pool:
         futures = [
-            pool.submit(_capture_provider, name, func)
-            for name, func in providers
+            pool.submit(_capture_provider, p.name, p.do_work)
+            for p in providers
         ]
         for fut in concurrent.futures.as_completed(futures):
             try:
@@ -1352,19 +1388,23 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 _PROVIDERS = {
-    "all": do_all,
-    "glm": do_glm,
-    "deepseek": do_deepseek,
-    "codex": do_codex,
-    "grok": do_grok,
+    "glm": GLMProvider,
+    "deepseek": DeepSeekProvider,
+    "codex": CodexProvider,
+    "grok": GrokProvider,
 }
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    func = _PROVIDERS.get(args.provider) or do_all  # default to `all`
+    if args.provider is None or args.provider == "all":
+        return do_all()
+
+    # Single provider: still prefetch first so do_work only reads resolved creds.
+    provider = _PROVIDERS[args.provider]()
+    provider.prefetch()
     try:
-        return func()
+        return provider.do_work()
     except ProviderError as e:
         die(str(e))
         return 1  # unreachable
