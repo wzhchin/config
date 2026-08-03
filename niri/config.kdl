@@ -168,7 +168,7 @@ layout {
     gaps 9
     center-focused-column "never"
     always-center-single-column
-    default-column-display "tabbed"
+    default-column-display "normal"
 
     preset-column-widths {
         proportion 0.33333
@@ -406,6 +406,15 @@ window-rule {
     match app-id=r#"^firefox$"#
 
     default-column-width { proportion 1.0; }
+
+    // Firefox on Wayland does not export per-pixel alpha (unlike emacs/foot),
+    // so blur alone is invisible. Compositor opacity is required to see through.
+    opacity 0.88
+    draw-border-with-background false
+    background-effect {
+        blur true
+        // xray true is default when blur is on (wallpaper blur, efficient)
+    }
 }
 
 window-rule {
