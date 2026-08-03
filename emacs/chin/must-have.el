@@ -12,6 +12,22 @@
       ring-bell-function #'ignore)
 (show-paren-mode 1)
 
+;; TTY: leave the default background unset so the host terminal can show
+;; through (true transparency / wallpaper). Themes paint an opaque bg;
+;; clear it after theme load. alpha-background only works on GUI frames.
+(defun chin/tty-transparent-background (&optional frame)
+  "Use unspecified background on TTY frames so the terminal bg shows through."
+  (with-selected-frame (or frame (selected-frame))
+    (unless (display-graphic-p)
+      (dolist (face '(default fringe line-number line-number-current-line
+                       hl-line secondary-selection))
+        (when (facep face)
+          (set-face-background face "unspecified-bg" frame))))))
+
+(chin/tty-transparent-background)
+(add-hook 'after-make-frame-functions #'chin/tty-transparent-background)
+(add-hook 'tty-setup-hook #'chin/tty-transparent-background)
+
 (defvar evil-respect-visual-line-mode)
 (defvar evil-want-abbrev-expand-on-insert-exit)
 (defvar evil-want-keybinding)
