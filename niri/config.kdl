@@ -90,7 +90,7 @@ output "eDP-1" {
     // so to put another output directly adjacent to it on the right, set its x to 1920.
     // If the position is unset or results in an overlap, the output is instead placed
     // automatically.
-    position x=320 y=1440
+    position x=0 y=2560
 }
 
 cursor {
@@ -109,6 +109,13 @@ overview {
         offset x=0 y=10
         color "#00000050"
     }
+}
+
+blur {
+    passes 3
+    offset 3
+    noise 0.02
+    saturation 1.2
 }
 
 xwayland-satellite {
@@ -143,7 +150,7 @@ output "HDMI-A-1" {
 
     // Transform allows to rotate the output counter-clockwise, valid values are:
     // normal, 90, 180, 270, flipped, flipped-90, flipped-180 and flipped-270.
-    // transform "normal"
+    transform "90"
 
     // Position of the output in the global coordinate space.
     // This affects directional monitor actions like "focus-monitor-left", and cursor movement.
@@ -239,12 +246,12 @@ layout {
 // See the binds section below for more spawn examples.
 // spawn-at-startup "alacritty" "-e" "fish"
 spawn-at-startup "rgbar"
-spawn-at-startup "wall.sh"
 spawn-at-startup "fcitx5"
 spawn-at-startup "dunst"
 spawn-at-startup "clash"
 spawn-at-startup "/usr/lib/xdg-desktop-portal-gtk" "--replace"
 spawn-at-startup "wl-paste" "--watch" "rglauncher-clip-writer"
+spawn-at-startup  "awww-daemon"
 
 spawn-at-startup "~/files/config/scripts/waylock"
 
@@ -382,6 +389,14 @@ window-rule {
 }
 
 window-rule {
+    match app-id=r#"^emacs$"#
+
+    background-effect {
+        blur true
+    }
+}
+
+window-rule {
     match app-id="^mpv$"
     default-column-width {}
 }
@@ -415,6 +430,15 @@ window-rule {
 
     // Use this instead if you want them visible on third-party screenshot tools.
     // block-out-from "screencast"
+}
+
+layer-rule {
+    match namespace=r#"^rgbar$"#
+    opacity 0.4
+
+    background-effect {
+        blur true
+    }
 }
 
 binds {

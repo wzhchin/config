@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+IMAGE_DIR=""
+OUTPUT=""
+INTERVAL_SECONDS=100
+ARGS=()
+
+while [ $# -gt 0 ]; do
+    case $1 in
+        -d)
+            shift
+            IMAGE_DIR="$1"
+            ;;
+        -o)
+            shift
+            ARGS+=("--outputs" "$1")
+            ;;
+    esac
+    shift
+done
+
+if [ -z "$IMAGE_DIR" ]; then
+    exit 1
+fi
+
+while true; do
+  find "${IMAGE_DIR}" -type f | while read image; do
+	set -x
+        awww img \
+             --resize crop \
+             --transition-type push-right \
+             --transition-duration 2 \
+             "${ARGS[@]}" \
+             "$image"
+
+        sleep "$INTERVAL_SECONDS"
+    done
+done

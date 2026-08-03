@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+# python cache clean
+uv cache prune
+
+# frontend cache clean
+npm cache verify
+pnpm store path
+pnpm store prune
+

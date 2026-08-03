@@ -1,2 +1,3 @@
 - DO NOT execute `find $HOME`, `find /`, you could only find in a small range.
 - DO NOT view git history automaticly, UNLESS user ask you to read them.
+- TRY TO use sub-agent to keep clean and small context.
