@@ -1,3 +1,3 @@
-- DO NOT execute `find $HOME`, `find /`, you could only find in a small range.
-- DO NOT view git history automaticly, UNLESS user ask you to read them.
-- TRY TO use sub-agent to keep clean and small context.
+- Do not search from `/`, `$HOME`, or `~`. Limit filesystem searches to the current repository or another explicitly named, narrowly scoped directory. Ask the user before expanding the scope.
+- Do not inspect Git history, including `git log`, commit-level `git show`, `git blame`, or `git reflog`, unless the user explicitly asks for historical analysis. `git status` and working-tree/index diffs are allowed.
+- Prefer sub-agents aggressively so the main conversation stays lean and precise. Spawn a sub-agent for any non-trivial, bounded piece of work — exploration, research, implementation, review, verification, and messy setup that is incidental to the main task — instead of loading large intermediate noise into the main agent. Use parallel sub-agents when subtasks are independent. Keep work in the main agent only when it is trivial, tightly sequential with immediate user feedback, or cannot be scoped cleanly. Give each sub-agent a clear, narrow scope and non-overlapping write targets; consolidate only the distilled findings or outcomes before responding.
