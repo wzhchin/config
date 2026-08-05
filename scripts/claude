@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export HTTPS_PROXY=http://127.0.0.1:9922
+export https_proxy=http://127.0.0.1:9922
+export HTTP_PROXY=http://127.0.0.1:9922
+export http_proxy=http://127.0.0.1:9922
+export NODE_EXTRA_CA_CERTS=/home/chin/.mitm-proxy/ca.pem
+export SSL_CERT_FILE=/home/chin/.mitm-proxy/ca-bundle.pem
+export REQUESTS_CA_BUNDLE=/home/chin/.mitm-proxy/ca-bundle.pem
+export CURL_CA_BUNDLE=/home/chin/.mitm-proxy/ca-bundle.pem
+
 _use_deepseek() {
   export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
-#  export ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY"
   export ANTHROPIC_MODEL='deepseek-v4-flash'
   export ANTHROPIC_DEFAULT_OPUS_MODEL='deepseek-v4-pro'
   export ANTHROPIC_DEFAULT_SONNET_MODEL='deepseek-v4-flash'
@@ -14,17 +22,15 @@ _use_deepseek() {
 
 _use_glm() {
   export ANTHROPIC_BASE_URL="https://open.bigmodel.cn/api/anthropic"
-#  export ANTHROPIC_AUTH_TOKEN="$GLM_API_KEY"
   export ANTHROPIC_MODEL=glm-5.2
   export ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.2
-  export ANTHROPIC_DEFAULT_SONNET_MODEL=glm-5.1
+  export ANTHROPIC_DEFAULT_SONNET_MODEL=glm-5.2
   export ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-4.7
   export CLAUDE_CODE_SUBAGENT_MODEL=glm-4.7
 }
 
 export API_TIMEOUT_MS="3000000"
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
-
 
 PASSTHROUGH_ARGS=()
 
@@ -37,11 +43,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if ping l25.lc -c 1 &>/dev/null; then
-  export ANTHROPIC_BASE_URL="http://l25.lc:8317"
-else
-  export ANTHROPIC_BASE_URL="http://localhost:8317"
-fi
+export ANTHROPIC_BASE_URL="https://localhost:8787/v1"
 export ANTHROPIC_AUTH_TOKEN="sk-cpa"
 
-claude "${PASSTHROUGH_ARGS[@]}"
+/usr/bin/claude "${PASSTHROUGH_ARGS[@]}"
