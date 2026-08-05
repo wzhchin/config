@@ -22,13 +22,19 @@ _kfmt_path_ext() {
         $WRITE_FLAG && { shfmt -w -i 4 "$fp"; } || { shfmt -i 4 "$fp"; }
         ;;
     py)
-        $WRITE_FLAG && { ruff format --no-cache "$fp"; } || { ruff format --preview --no-cache "$fp"; }
+        # pacman: ruff  /  uv tool install ruff
+        $WRITE_FLAG \
+          && { ruff format --no-cache "$fp"; } \
+          || { ruff format --no-cache --stdin-filename="$fp" - <"$fp"; }
         ;;
     json)
         $WRITE_FLAG && { yq -P -o json -i "$fp"; } || { yq -P -o json "$fp"; }
         ;;
     toml)
-        $WRITE_FLAG && { topiary format "$fp"; } || { topiary format --language toml <"$fp"; }
+        # pacman: taplo-cli
+        $WRITE_FLAG \
+          && { taplo format "$fp"; } \
+          || { taplo format - <"$fp"; }
         ;;
     xml)
         $WRITE_FLAG && { yq -P -o xml -i "$fp"; } || { yq -P -o xml "$fp"; }
@@ -38,6 +44,36 @@ _kfmt_path_ext() {
         $WRITE_FLAG \
           && { stylua --indent-type Spaces --indent-width 2 "$fp"; } \
           || { cat "$fp" | stylua --indent-type Spaces --indent-width 2 --stdin-filepath - -; }
+        ;;
+    js | mjs | cjs | jsx | ts | mts | cts | tsx | css)
+        # pacman: biome
+        $WRITE_FLAG \
+          && { biome format --write "$fp"; } \
+          || { biome format --stdin-file-path="$fp" <"$fp"; }
+        ;;
+    rs)
+        # pacman: rust / rustup component add rustfmt
+        $WRITE_FLAG \
+          && { rustfmt "$fp"; } \
+          || { rustfmt --emit stdout "$fp"; }
+        ;;
+    go)
+        # pacman: go
+        $WRITE_FLAG \
+          && { gofmt -w "$fp"; } \
+          || { gofmt "$fp"; }
+        ;;
+    yaml | yml)
+        # pacman: yamlfmt
+        $WRITE_FLAG \
+          && { yamlfmt "$fp"; } \
+          || { yamlfmt - <"$fp"; }
+        ;;
+    sql)
+        # pacman: pgformatter
+        $WRITE_FLAG \
+          && { pg_format -i "$fp"; } \
+          || { pg_format "$fp"; }
         ;;
     *)
         warn "unsupported file type: $ext"
@@ -54,19 +90,34 @@ _kfmt_stdin_ext() {
         shfmt -i 4
         ;;
     py)
-        ruff format --preview --no-cache -
+        ruff format --no-cache --stdin-filename=stdin.py -
         ;;
     json)
         yq -P -o json
         ;;
     toml)
-        topiary format --language toml
+        taplo format -
         ;;
     xml)
         yq -P -o xml
         ;;
     lua)
         stylua --indent-type Spaces --indent-width 2 --stdin-filepath - -
+        ;;
+    js | mjs | cjs | jsx | ts | mts | cts | tsx | css)
+        biome format --stdin-file-path="stdin.$ext"
+        ;;
+    rs)
+        rustfmt
+        ;;
+    go)
+        gofmt
+        ;;
+    yaml | yml)
+        yamlfmt -
+        ;;
+    sql)
+        pg_format
         ;;
     *)
         warn "unsupported file type: $ext"
@@ -92,6 +143,18 @@ _format_file() {
         *text/x-script.python*)
             _kfmt_path_ext "$fp" "py"
             ;;
+        *text/x-rust* | *text/rust*)
+            _kfmt_path_ext "$fp" "rs"
+            ;;
+        *text/x-go* | *text/x-gofile*)
+            _kfmt_path_ext "$fp" "go"
+            ;;
+        *text/yaml* | *text/x-yaml* | *application/yaml*)
+            _kfmt_path_ext "$fp" "yaml"
+            ;;
+        *text/x-sql* | *application/sql*)
+            _kfmt_path_ext "$fp" "sql"
+            ;;
         *)
             warn "cannot detect file type: $fp"
             ;;
@@ -106,7 +169,8 @@ Usage: kfmt [-i|-w] [-t TYPE] FILE...
 
 Options:
   -i, -w     Write formatted result back to file
-  -t TYPE    Force file type (sh, py, json, toml, xml, lua)
+  -t TYPE    Force file type (sh, py, json, toml, xml, lua, rs, go,
+             yaml, yml, sql, js, mjs, cjs, jsx, ts, mts, cts, tsx, css)
   -h, --help Show this help message
 
 With no FILE and a piped stdin, formats stdin to stdout (-t required).
@@ -137,7 +201,7 @@ if [[ ${#DSTS[@]} -eq 0 ]]; then
         _show_help
         exit 1
     fi
-    [[ -z $FILE_TYPE ]] && die "stdin mode requires '-t TYPE' (sh, py, json, toml, xml, lua)."
+    [[ -z $FILE_TYPE ]] && die "stdin mode requires '-t TYPE' (sh, py, json, toml, xml, lua, rs, go, yaml, sql, js, ts, css, ...)."
     _kfmt_stdin_ext "$FILE_TYPE"
     exit
 fi
