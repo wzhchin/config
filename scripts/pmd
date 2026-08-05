@@ -88,7 +88,7 @@ def pad_to(s: str, width: int) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Theme / colours
+# Theme / colours — fixed 16-colour ANSI SGR only (no env overrides, no truecolor)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @dataclass
@@ -121,6 +121,8 @@ class Theme:
     QUOTED: str = ''
     GRAY: str = ''
     DEF: str = ''
+    FAINT: str = ''
+    UFAINT: str = ''
 
     # Admonition colours
     NOTE_C: str = ''
@@ -129,72 +131,57 @@ class Theme:
     WRN_C: str = ''
     CAUTION_C: str = ''
 
-    def init(self, env: dict):
-        """Resolve colours from env or defaults."""
-        e = lambda key, default: sgr(int(os.environ.get(key, default).rstrip('m').split(';')[-1]) if os.environ.get(key, default).lstrip('\033[').rstrip('m').isdigit() else eval(f'esc("{os.environ.get(key, default)}")')) if False else self._col(env, key, default)
-
-    def _col(self, env: dict, key: str, default: str) -> str:
-        val = env.get(key)
-        if val:
-            # val is like "33;1" — build SGR
-            return sgr(*[int(x) for x in val.split(';')])
-        return sgr(*[int(x) for x in default.split(';')])
-
     def configure(self, dark: bool):
+        """Hardcoded ANSI SGR palette (30–37 + bold/faint/italic)."""
         self.dark = dark
-        e = os.environ
         if dark:
             self.bgc = 0
-            self.DEF = sgr(37)
-            self.SEC_MAJ = self._col(e, 'SMD_SEC_MAJ', '33;1')
-            self.SEC_MIN = self._col(e, 'SMD_SEC_MIN', '33;2')
-            self.SSEC_MAJ = self._col(e, 'SMD_SSEC_MAJ', '36;1')
-            self.SSEC_MIN = self._col(e, 'SMD_SSEC_MIN', '36;2')
-            self.SSSEC_MAJ = self._col(e, 'SMD_SSSEC_MAJ', '34;1')
-            self.SSSEC_MIN = self._col(e, 'SMD_SSSEC_MIN', '34')
-            self.SSSSEC_MAJ = self._col(e, 'SMD_SSSSEC_MAJ', '36;3')
-            self.SSSSEC_MIN = self._col(e, 'SMD_SSSSEC_MIN', '36;3')
-            self.SSSSSEC_MAJ = self._col(e, 'SMD_SSSSSEC_MAJ', '34;3;2')
-            self.SSSSSEC_MIN = self._col(e, 'SMD_SSSSSEC_MIN', '34;3')
-            self.ACOL = self._col(e, 'SMD_ACOL', '34;2')
-            self.AECOL = self._col(e, 'SMD_AECOL', '37;22')
-            lncol = e.get('SMD_LNCOL', '32;22')
-            lndst = e.get('SMD_LNDST', '32;2')
-            self.LNCOL = sgr(*[int(x) for x in lncol.split(';')])
-            self.LNDST = sgr(*[int(x) for x in lndst.split(';')])
-            self.PCOL = self._col(e, 'SMD_PCOL', '35;22')
-            self.PCOLD = self._col(e, 'SMD_PCOLD', '35;2')
+            self.DEF = sgr(37)              # white
+            self.SEC_MAJ = sgr(33, 1)       # yellow bold
+            self.SEC_MIN = sgr(33, 2)       # yellow faint
+            self.SSEC_MAJ = sgr(36, 1)      # cyan bold
+            self.SSEC_MIN = sgr(36, 2)      # cyan faint
+            self.SSSEC_MAJ = sgr(34, 1)     # blue bold
+            self.SSSEC_MIN = sgr(34)        # blue
+            self.SSSSEC_MAJ = sgr(36, 3)    # cyan italic
+            self.SSSSEC_MIN = sgr(36, 3)
+            self.SSSSSEC_MAJ = sgr(34, 3, 2)  # blue italic faint
+            self.SSSSSEC_MIN = sgr(34, 3)
+            self.ACOL = sgr(34, 2)          # blue faint
+            self.AECOL = sgr(37, 22)        # white normal
+            self.LNCOL = sgr(32, 22)        # green
+            self.LNDST = sgr(32, 2)         # green faint
+            self.PCOL = sgr(35, 22)         # magenta
+            self.PCOLD = sgr(35, 2)         # magenta faint
             self.QUOTED = sgr(37, 22)
             self.GRAY = sgr(2)
             self.FAINT = FAINT
             self.UFAINT = UFAINT
         else:
             self.bgc = 7
-            self.DEF = sgr(30)
-            self.SEC_MAJ = self._col(e, 'SMD_SEC_MAJ', '33;2')
-            self.SEC_MIN = self._col(e, 'SMD_SEC_MIN', '33')
-            self.SSEC_MAJ = self._col(e, 'SMD_SSEC_MAJ', '36;1;2')
-            self.SSEC_MIN = self._col(e, 'SMD_SSEC_MIN', '36;1;2')
-            self.SSSEC_MAJ = self._col(e, 'SMD_SSSEC_MAJ', '34;3;2')
-            self.SSSEC_MIN = self._col(e, 'SMD_SSSEC_MIN', '34;3')
-            self.SSSSEC_MAJ = self._col(e, 'SMD_SSSSEC_MAJ', '34;3;2')
-            self.SSSSEC_MIN = self._col(e, 'SMD_SSSSEC_MIN', '34;3')
-            self.SSSSSEC_MAJ = self._col(e, 'SMD_SSSSSEC_MAJ', '34;3')
-            self.SSSSSEC_MIN = self._col(e, 'SMD_SSSSSEC_MIN', '34;3')
-            self.ACOL = self._col(e, 'SMD_ACOL', '34;2')
-            self.AECOL = self._col(e, 'SMD_AECOL', '30;22')
-            lncol = e.get('SMD_LNCOL', '32;2')
-            lndst = e.get('SMD_LNDST', '32;22')
-            self.LNCOL = sgr(*[int(x) for x in lncol.split(';')])
-            self.LNDST = sgr(*[int(x) for x in lndst.split(';')])
-            self.PCOL = self._col(e, 'SMD_PCOL', '35;2')
-            self.PCOLD = self._col(e, 'SMD_PCOLD', '35;22')
+            self.DEF = sgr(30)              # black
+            self.SEC_MAJ = sgr(33, 2)       # yellow faint
+            self.SEC_MIN = sgr(33)          # yellow
+            self.SSEC_MAJ = sgr(36, 1, 2)   # cyan bold faint
+            self.SSEC_MIN = sgr(36, 1, 2)
+            self.SSSEC_MAJ = sgr(34, 3, 2)  # blue italic faint
+            self.SSSEC_MIN = sgr(34, 3)
+            self.SSSSEC_MAJ = sgr(34, 3, 2)
+            self.SSSSEC_MIN = sgr(34, 3)
+            self.SSSSSEC_MAJ = sgr(34, 3)
+            self.SSSSSEC_MIN = sgr(34, 3)
+            self.ACOL = sgr(34, 2)
+            self.AECOL = sgr(30, 22)
+            self.LNCOL = sgr(32, 2)
+            self.LNDST = sgr(32, 22)
+            self.PCOL = sgr(35, 2)
+            self.PCOLD = sgr(35, 22)
             self.QUOTED = sgr(37, 22, 2)
             self.GRAY = sgr(37, 2)
             self.FAINT = sgr(37, 2)
             self.UFAINT = sgr(30, 22)
 
-        self.REFCOL = self._col(e, 'SMD_REFCOL', '34')
+        self.REFCOL = sgr(34)               # blue
         self.NOTE_C = sgr(34)
         self.TIP_C = sgr(32)
         self.IMP_C = sgr(35)
@@ -441,7 +428,9 @@ ENVIRONMENT VARIABLES
   LANG_ALIASES: allows to define aliases for languages names e.g.: 'shell:bash'.
   SMD_FLUSH_FOOT: section level at which flush footnote/references, in [0-5].
   SMD_W: default maximum width.
-  SMD_SEC_MAJ/SMD_SEC_MIN/.../SMD_SSSSSEC_MIN: colors for sections, e.g. 35;1.
+
+  Colours are fixed 16-colour ANSI SGR only (no truecolor / env overrides).
+  Code blocks use bat --theme=ansi when bat is available.
 """)
 
 
@@ -1634,12 +1623,16 @@ class Renderer:
         self.emit(f'{ci}{DEF}{gray}╵{DEF}')
 
     def _highlight_bat(self, code: str, lang: str) -> str:
-        """Use bat for syntax highlighting."""
+        """Use bat for syntax highlighting (ANSI 16-colour theme only)."""
         try:
+            env = os.environ.copy()
+            env['BAT_THEME'] = 'ansi'
+            env.pop('NO_COLOR', None)
+            env['CLICOLOR_FORCE'] = '1'
             result = subprocess.run(
-                [self.cfg.bat_cmd, '--color', 'always', '--italic-text', 'always',
-                 '--style', 'plain', '-P', '-l', lang],
-                input=code, capture_output=True, text=True, timeout=5
+                [self.cfg.bat_cmd, '--color', 'always', '--theme', 'ansi',
+                 '--italic-text', 'always', '--style', 'plain', '-P', '-l', lang],
+                input=code, capture_output=True, text=True, timeout=5, env=env,
             )
             if result.returncode == 0:
                 return result.stdout.rstrip('\n')
