@@ -396,6 +396,20 @@ window-rule {
     }
 }
 
+// GTK4 does not export per-pixel alpha here (same class as Firefox).
+// CSS rgba alone stays opaque; compositor opacity is required to see through.
+window-rule {
+    match app-id=r#"^org\.codeberg\.wangzh\.rglauncher$"#
+    match app-id=r#"^rglauncher$"#
+
+    // Whole-window alpha (GTK has no per-pixel export). Lower = left list more see-through.
+    opacity 0.99
+    draw-border-with-background false
+    background-effect {
+        blur true
+    }
+}
+
 window-rule {
     match app-id="^mpv$"
     default-column-width {}
@@ -409,7 +423,6 @@ window-rule {
 
     // Firefox on Wayland does not export per-pixel alpha (unlike emacs/foot),
     // so blur alone is invisible. Compositor opacity is required to see through.
-    opacity 0.88
     draw-border-with-background false
     background-effect {
         blur true

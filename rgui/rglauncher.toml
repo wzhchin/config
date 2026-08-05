@@ -12,3 +12,4 @@ icon_paths = [
 
 [ui]
 icon_config = "icon-config.toml"
+transparent = true
