@@ -454,9 +454,9 @@ window-rule {
     // block-out-from "screencast"
 }
 
+// rgbar sets layer-shell namespace to the gtk-layer-shell default, not "rgbar".
 layer-rule {
-    match namespace=r#"^rgbar$"#
-    opacity 0.4
+    match namespace=r#"^gtk-layer-shell$"#
 
     background-effect {
         blur true
