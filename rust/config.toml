@@ -8,3 +8,6 @@ registry = "sparse+https://rsproxy.cn/index/"
 index = "https://rsproxy.cn/crates.io-index"
 [net]
 git-fetch-with-cli = true
+
+[build]
+target-dir = "/build-dir/cargo"
