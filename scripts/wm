@@ -2,7 +2,6 @@
 
 set -e
 
-export PASSWORD_STORE_DIR="/home/chin/.private/box0/password-store"
 export SDL_VIDEODRIVER=wayland
 export GTK_THEME=adw-gtk3
 export MOZ_ENABLE_WAYLAND=1
