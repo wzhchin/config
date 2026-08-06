@@ -11,10 +11,8 @@ case "$1" in
 	shift
 	;;
 esac
-export NODE_EXTRA_CA_CERTS=/home/chin/.mitm-proxy/ca.pem
-export SSL_CERT_FILE=/home/chin/.mitm-proxy/ca-bundle.pem
-export REQUESTS_CA_BUNDLE=/home/chin/.mitm-proxy/ca-bundle.pem
-export CURL_CA_BUNDLE=/home/chin/.mitm-proxy/ca-bundle.pem
+
+source ~/.profile.d/mitm-proxy.sh
 
 if [ -z "$MODEL" ]; then
     /usr/bin/codex "$@"
