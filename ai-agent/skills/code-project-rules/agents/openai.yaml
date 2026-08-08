@@ -1,0 +1,4 @@
+interface:
+  display_name: "Code Project Rules"
+  short_description: "Load required engineering rules before project work"
+  default_prompt: "Use $code-project-rules to load all rules required for this code task."
