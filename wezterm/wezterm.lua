@@ -170,33 +170,32 @@ return {
 		},
 	},
 	colors = {
-		-- The default text color
-		foreground = '#282828',
-		-- The default background color
-		background = '#f8f8f8',
+		-- Paper / Indigo light theme. Keep this palette aligned with foot.
+		foreground = '#263238',
+		background = '#f7f4ed',
 
 		-- Overrides the cell background color when the current cell is occupied by the
 		-- cursor and the cursor style is set to Block
-		cursor_bg = '#000000',
+		cursor_bg = '#2457c5',
 		-- Overrides the text color when the current cell is occupied by the cursor
-		cursor_fg = '#ffffff',
+		cursor_fg = '#f7f4ed',
 		-- Specifies the border color of the cursor when the cursor style is set to Block,
 		-- or the color of the vertical or horizontal bar when the cursor style is set to
 		-- Bar or Underline.
-		cursor_border = '#006800',
+		cursor_border = '#2457c5',
 
 		-- the foreground color of selected text
-		selection_fg = '#000000',
+		selection_fg = '#263238',
 		-- the background color of selected text
-		selection_bg = '#bdbdbd',
+		selection_bg = '#cfe1ff',
 
 		-- The color of the scrollbar "thumb"; the portion that represents the current viewport
-		scrollbar_thumb = '#222222',
+		scrollbar_thumb = '#8b95a5',
 
 		-- The color of the split lines between panes
-		split = '#444444',
+		split = '#aab4c3',
 
-		ansi = {'#808080', '#a60000', '#006800', '#6f5500', '#0031a9', '#721045', '#005e8b', '#000000'},
-		brights = {'#606060', '#b22222', '#228b22', '#a0522d', '#483d8b', '#a020f0', '#008b8b', '#595959'}
+		ansi = {'#263238', '#b42318', '#18794e', '#9a6700', '#2457c5', '#8d3ab8', '#087f8c', '#5b6472'},
+		brights = {'#4b5563', '#c83c3c', '#248a5b', '#b17a17', '#3b6ee8', '#a657c4', '#159ba8', '#ffffff'}
 	}
 }

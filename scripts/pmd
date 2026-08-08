@@ -136,7 +136,7 @@ class Theme:
         self.dark = dark
         if dark:
             self.bgc = 0
-            self.DEF = sgr(37)              # white
+            self.DEF = sgr(39)              # terminal default foreground
             self.SEC_MAJ = sgr(33, 1)       # yellow bold
             self.SEC_MIN = sgr(33, 2)       # yellow faint
             self.SSEC_MAJ = sgr(36, 1)      # cyan bold
@@ -153,7 +153,7 @@ class Theme:
             self.LNDST = sgr(32, 2)         # green faint
             self.PCOL = sgr(35, 22)         # magenta
             self.PCOLD = sgr(35, 2)         # magenta faint
-            self.QUOTED = sgr(37, 22)
+            self.QUOTED = sgr(39, 22)
             self.GRAY = sgr(2)
             self.FAINT = FAINT
             self.UFAINT = UFAINT
