@@ -9,8 +9,8 @@
         xterm-mouse-mode-called t))
 
 (menu-bar-mode -1)
-;; (tool-bar-mode -1)
-;; (scroll-bar-mode -1)
+(tool-bar-mode -1)
+(scroll-bar-mode -1)
 (add-to-list 'default-frame-alist '(font . "Sarasa Mono SC-12"))
 (add-to-list 'default-frame-alist '(internal-border-width . 12))
 (add-to-list 'default-frame-alist '(alpha-background . 70))
