@@ -90,7 +90,7 @@ output "eDP-1" {
     // so to put another output directly adjacent to it on the right, set its x to 1920.
     // If the position is unset or results in an overlap, the output is instead placed
     // automatically.
-    position x=0 y=2560
+    position x=0 y=1440
 }
 
 cursor {
@@ -150,7 +150,7 @@ output "HDMI-A-1" {
 
     // Transform allows to rotate the output counter-clockwise, valid values are:
     // normal, 90, 180, 270, flipped, flipped-90, flipped-180 and flipped-270.
-    transform "90"
+    // transform "90"
 
     // Position of the output in the global coordinate space.
     // This affects directional monitor actions like "focus-monitor-left", and cursor movement.
@@ -253,9 +253,7 @@ spawn-at-startup "/usr/lib/xdg-desktop-portal-gtk" "--replace"
 spawn-at-startup "wl-paste" "--watch" "rglauncher-clip-writer"
 spawn-at-startup  "awww-daemon"
 
-spawn-at-startup "~/files/config/scripts/waylock"
-
-spawn-at-startup "swayidle" "-w" "timeout" "601" "niri msg action power-off-monitors" "timeout" "600" "~/files/config/scripts/waylock" "before-sleep" "~/files/config/scripts/waylock"
+spawn-at-startup "swayidle" "-w" "timeout" "600" "~/files/config/scripts/waylock" "before-sleep" "~/files/config/scripts/waylock"
 
 // Uncomment this line to ask the clients to omit their client-side decorations if possible.
 // If the client will specifically ask for CSD, the request will be honored.
@@ -484,7 +482,7 @@ binds {
     Mod+X { spawn "emacs"; }
     Mod+D { spawn "rglauncher" "-t" "app,win,calc"; }
     Mod+S { spawn "rglauncher" "-t" "clip"; }
-    Super+Alt+L { spawn "swaylock"; }
+    Mod+Alt+L { spawn "~/files/config/scripts/waylock"; }
 
     // You can also use a shell. Do this if you need pipes, multiple commands, etc.
     // Note: the entire command goes as a single argument in the end.
