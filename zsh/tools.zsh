@@ -19,9 +19,9 @@ export RUSTUP_UPDATE_ROOT="https://rsproxy.cn/rustup"
 [ -d ~/.cargo/bin ] && export PATH="$HOME/.cargo/bin:$PATH"
 
 ## Android
-export ANDROID_HOME="$HOME/Android/Sdk" 
+export ANDROID_HOME="$HOME/Android/Sdk"
 ### unset this
-unset ANDROID_SDK_ROOT 
+unset ANDROID_SDK_ROOT
 [ -d "$ANDROID_HOME" ] && [ -d "$ANDORID_HOME/ndk" ] && export NDK_HOME="$ANDROID_HOME/ndk/$(ls -1 $ANDROID_HOME/ndk)"
 
 
@@ -94,20 +94,20 @@ alias mpa='mpv --no-video'
 alias aria2n='aria2c --no-conf=true -j4 -x4 -s4'
 alias fgt="unset HISTFILE"
 alias mkp='mkdir -p'
-alias less="less -R" 
+alias less="less -R"
 alias ap="realpath -s"
 alias rmi="trash"
 
 mkpp() {
-  local -a args 
+    local -a args
     while [ "$#" -gt 0 ]; do
-      case "$1" in
-        -*) args=("${args[@]}" "$1") ;;
-        *) args=("${args[@]}" "${1%/*}") ;;
-      esac
-      shift
+        case "$1" in
+            -*) args=("${args[@]}" "$1") ;;
+            *) args=("${args[@]}" "${1%/*}") ;;
+        esac
+        shift
     done
-mkdir -p "${args[@]}"
+    mkdir -p "${args[@]}"
 
 }
 
@@ -123,18 +123,22 @@ hpx() {
 }
 
 tddr() {
-  if [ -z "$CHIN_DAILY_DIR" ]; then
-    echo "Set CHIN_DAILY_DIR"
-    return 1
-  fi
-  local _d="$CHIN_DAILY_DIR/$(date +%y%m-%d)"
-  if [ -n "$1" ]; then
-    _d="$_d-$1"
-  fi
-  mkdir -p "$_d"
-  cd "$_d"
+    if [ -z "$CHIN_DAILY_DIR" ]; then
+        echo "Set CHIN_DAILY_DIR"
+        return 1
+    fi
+    if [ "$1" = fzf ]; then
+        local _d="$CHIN_DAILY_DIR/$(ls $CHIN_DAILY_DIR | fzf)"
+    else
+        local _d="$CHIN_DAILY_DIR/$(date +%y%m-%d)"
+    fi
+    if [ -n "$1" ]; then
+        _d="$_d-$1"
+    fi
+    mkdir -p "$_d"
+    cd "$_d"
 }
 
 check-path() {
-  echo "$PATH" | sed -z 's/:/\n/g' | awk '{arr[$0]++; print arr[$0], $0}' 
+    echo "$PATH" | sed -z 's/:/\n/g' | awk '{arr[$0]++; print arr[$0], $0}'
 }
