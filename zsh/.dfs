@@ -29,7 +29,7 @@ store() {
 restore() {
   msg "restore zsh"
   mkdir -p $HOME/.cache/zsh
-  if realpath "$HOME" | grep /data/data/com.termux/; then
+  if  command -v termux-info; then
     restore_termux
   elif is_msys; then
     restore_msys2
@@ -81,7 +81,8 @@ cat "$DFS_DIR/tools.zsh" >>"$ZSHRC"
 restore_termux() {
   cat <<EOF >$HOME/.zshrc
 export CHIN_PG_DIR="$HOME/playground"
-export CHIN_FILES_DIR="$HOME/files"
+export CHIN_FILES_DIR="/sdcard/files"
+export CHIN_CONFIG_DIR="$HOME/config"
 source "$DFS_DIR/init.zsh"
 source "$DFS_DIR/termux.zsh"
 source "$DFS_DIR/tools.zsh"

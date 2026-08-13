@@ -9,7 +9,7 @@ export CHIN_PRIVATE_DIR=$CHIN_FILES_DIR/private
 export CHIN_PRIVATE_ENV=$CHIN_PRIVATE_DIR/private-envs
 
 export CHIN_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}"
-export CHIN_CONFIG_DIR="${CHIN_FILES_DIR}/config"
+export CHIN_CONFIG_DIR="${CHIN_CONFIG_DIR:-${CHIN_FILES_DIR}/config}"
 export CHIN_ZSH_CACHE_DIR="${CHIN_CACHE_DIR}/zsh"
 
 autoload -U add-zsh-hook
