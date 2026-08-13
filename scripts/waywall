@@ -26,8 +26,7 @@ if [ -z "$IMAGE_DIR" ]; then
 fi
 
 while true; do
-  find "${IMAGE_DIR}" -type f | while read image; do
-	set -x
+    find "${IMAGE_DIR}" -type f | while read image; do
         awww img \
              --resize crop \
              --transition-type push-right \
