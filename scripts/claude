@@ -5,7 +5,7 @@ source ~/.profile.d/mitm-proxy.sh
 
 _use_deepseek() {
     export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
-    export ANTHROPIC_AUTH_TOKEN="$(pass-sliver DEEPSEEK_API_KEY)"
+    export ANTHROPIC_AUTH_TOKEN="$(pass DEEPSEEK_API_KEY)"
     export ANTHROPIC_MODEL='deepseek-v4-pro'
     export ANTHROPIC_DEFAULT_OPUS_MODEL='deepseek-v4-pro'
     export ANTHROPIC_DEFAULT_SONNET_MODEL='deepseek-v4-pro'
@@ -15,10 +15,10 @@ _use_deepseek() {
 
 _use_glm() {
     export ANTHROPIC_BASE_URL="https://open.bigmodel.cn/api/anthropic"
-    export ANTHROPIC_AUTH_TOKEN="$(pass-sliver GLM_API_KEY)"
-    export ANTHROPIC_MODEL=glm-5.2
-    export ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.2
-    export ANTHROPIC_DEFAULT_SONNET_MODEL=glm-5.2
+    export ANTHROPIC_AUTH_TOKEN="$(pass GLM_API_KEY)"
+    export ANTHROPIC_MODEL=glm-5.3
+    export ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.3
+    export ANTHROPIC_DEFAULT_SONNET_MODEL=glm-5.3
     export ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-4.7
     export CLAUDE_CODE_SUBAGENT_MODEL=glm-4.7
 }

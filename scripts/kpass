@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export SHELL=bash
+
+export PASSWORD_STORE_GENERATED_LENGTH=14
+
+export KPASS_RUN_DIR="$XDG_RUNTIME_DIR/kpass"
+export KPASS_SHOW_TYPE_FILE="$KPASS_RUN_DIR/showtype"
+
+if [[ -t 0 ]]; then
+    export GPG_TTY="$(tty)"
+elif [[ -n ${SSH_TTY:-} ]]; then
+    export GPG_TTY="$SSH_TTY"
+fi
+
+
+mkdir -p "$KPASS_RUN_DIR" && echo "hist" > "$KPASS_SHOW_TYPE_FILE"
+
+fbind-toggle() {
+    local entry="$1"
+    local show_type="$(<"$KPASS_SHOW_TYPE_FILE")"
+
+    case "$show_type" in
+        hist) pass show "$entry" >/dev/null 2>&1 && printf 'pass\n' > "$KPASS_SHOW_TYPE_FILE" ;;
+        *) printf 'hist\n' > "$KPASS_SHOW_TYPE_FILE" ;;
+    esac
+}
+
+export -f fbind-toggle
+
+fbind-enter() {
+    local entry="$1"
+    local show_type="$2"
+    [ -z "$show_type" ] && show_type="$(<"$KPASS_SHOW_TYPE_FILE")"
+
+    case "$show_type" in
+        pass) pass show "$entry" ;;
+    esac
+
+    echo "entry: $entry"
+    echo "minfo: $(git log -1 --format='(%ad) %h -- %s' --date=relative -- "$entry.gpg")"
+}
+
+export -f fbind-enter
+
+fpreview() {
+    local show_type
+    show_type="$(<"$KPASS_SHOW_TYPE_FILE")"
+
+    case "$show_type" in
+        hist) git log --follow "$1.gpg" ;;
+        *)
+            PASSWORD_STORE_GPG_OPTS="${PASSWORD_STORE_GPG_OPTS:-} --pinentry-mode error" \
+                                   pass show "$1" 2>/dev/null || printf 'use M-T to activate GPG cache\n'
+            ;;
+    esac
+}
+
+export -f fpreview
+
+handle-fzf() {
+    local query="${1:-}"
+    cd "$PASSWORD_STORE_DIR"
+    find "$PASSWORD_STORE_DIR" -type f -name '*.gpg' -printf '%P\n' \
+        | sed 's/\.gpg$//' \
+        | LC_ALL=C sort \
+        | fzf \
+              --no-multi \
+              --header='M-Toggle M-Show M-Edit' \
+              --prompt='pass> ' \
+              --query="$query"  \
+              --preview "fpreview {}" \
+              --bind 'alt-e:execute(pass edit {} </dev/tty >/dev/tty 2>&1)+refresh-preview'\
+              --bind 'alt-s:become(pass show {} </dev/tty >/dev/tty )' \
+              --bind 'alt-t:execute(fbind-toggle {})+refresh-preview' \
+              --bind 'enter:become(fbind-enter {})' \
+              --bind 'ctrl-right:become(fbind-enter {} pass)'
+}
+
+pput-file() {
+    [[ $# -eq 2 ]] || echo 'put-file requires FILE_OR_DIR and ENTRY'
+
+    local source_path="$1"
+    local entry="${2%.file}"
+    if [[ "$2" =~ ^.*/$ ]]; then
+        entry="$2${1##*/}"
+    fi
+    tar -cf - -- "$source_path" |
+        base64 |
+        pass insert --force --multiline "$entry.file"
+}
+
+pget-file() {
+    [[ $# -eq 2 ]] || echo 'get-file requires ENTRY and TARGET'
+
+    pass show "${1%.file}.file" | base64 -d | tar -xf - -C "$2"
+}
+
+OP="${1:-fzf}"
+case "$OP" in
+    fzf)
+        [ $# -gt 1 ] && [ $1 = fzf ] && shift
+        handle-fzf "$@"
+        ;;
+    put)
+        shift
+        pput-file "$@"
+        ;;
+    get)
+        shift
+        pget-file "$@"
+        ;;
+    *)
+        pass "$@"
+        ;;
+esac
