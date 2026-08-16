@@ -4,6 +4,7 @@ set -euo pipefail
 export SHELL=bash
 
 export PASSWORD_STORE_GENERATED_LENGTH=14
+export PASSWORD_STORE_DIR="${PASSWORD_STORE_DIR:-$HOME/.password-store/}"
 
 export KPASS_RUN_DIR="$XDG_RUNTIME_DIR/kpass"
 export KPASS_SHOW_TYPE_FILE="$KPASS_RUN_DIR/showtype"
@@ -79,22 +80,22 @@ handle-fzf() {
 }
 
 pput-file() {
-    [[ $# -eq 2 ]] || echo 'put-file requires FILE_OR_DIR and ENTRY'
+    [[ $# -eq 2 ]] || { echo 'put-file requires FILE_OR_DIR and ENTRY'; exit 1; }
 
     local source_path="$1"
-    local entry="${2%.file}"
+    local entry="${2#F-}"
     if [[ "$2" =~ ^.*/$ ]]; then
         entry="$2${1##*/}"
     fi
     tar -cf - -- "$source_path" |
         base64 |
-        pass insert --force --multiline "$entry.file"
+        pass insert --force --multiline "F-$entry"
 }
 
 pget-file() {
-    [[ $# -eq 2 ]] || echo 'get-file requires ENTRY and TARGET'
+    [[ $# -eq 2 ]] || { echo 'get-file requires ENTRY and TARGET'; exit 1; }
 
-    pass show "${1%.file}.file" | base64 -d | tar -xf - -C "$2"
+    pass show "F-${1#F-}" | base64 -d | tar -xf - -C "$2"
 }
 
 OP="${1:-fzf}"
@@ -103,11 +104,11 @@ case "$OP" in
         [ $# -gt 1 ] && [ $1 = fzf ] && shift
         handle-fzf "$@"
         ;;
-    put)
+    pf)
         shift
         pput-file "$@"
         ;;
-    get)
+    gf)
         shift
         pget-file "$@"
         ;;
