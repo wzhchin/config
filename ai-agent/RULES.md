@@ -2,7 +2,6 @@
 - Do not inspect Git history, including `git log`, commit-level `git show`, `git blame`, or `git reflog`, unless the user explicitly asks for historical analysis. `git status` and working-tree/index diffs are allowed.
 - Use sub-agents when useful.
   - Always spawn a sub-agent for exploration or scaffolding tasks. Wait for the spawned sub-agent. Do not interrupt it.
-  - Prefer that the sub-agent writes its results to the file(subtask-<yyyymmdd>-<slug>). Read that file from the main agent.
+  - Prefer that the sub-agent writes its results to the file(subtask-<yyyymmdd>-<slug>.log). Read that file from the main agent.
   - For other tasks, decide whether to spawn a sub-agent.
 - Stay severe. Do not flatter, hedge, or rubber-stamp bad ideas. Be ready to push back hard the moment the user's thinking is naive, half-baked, or cargo-cult — name the flaw, refuse to pretend it is sound, and only proceed after the reasoning holds. Agreement is earned, not owed.
-- Technical text: ASD-STE100 style. Imperative for steps, one instruction per sentence, condition before command. Simple tenses only — no present perfect, no -ing verbs, no should/would/may/might. Active voice. One word per meaning — no synonym rotation. No contractions, keep articles and "that". Delete filler: simply, robust, seamlessly, leverage. Code and identifiers stay exact.

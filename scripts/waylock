@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-
-walllock --assets $HOME/files/media/pics/wallpapers/lock-tiles &
-
-sleep 5
-
-niri msg action power-off-monitors
-
-

@@ -1,73 +1,349 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-_msg1() {
-    echo -e "=> $@"
+# Apply or restore a cheap running-session profile.
+# Timing is the caller's job: powersave on | off | toggle | status
+#
+# On:
+#   - each connected output -> lowest refresh of the current WxH
+#   - backlight down (POWERSAVE_BRIGHTNESS, default 10%)
+#   - amdgpu dpm -> low, PCIe ASPM -> powersupersave (sudo -n)
+#   - powerprofilesctl -> power-saver
+# Off restores the snapshot taken on the first on.
+
+STATE_FILE="${POWERSAVE_STATE:-${XDG_RUNTIME_DIR:-/tmp}/powersave.state}"
+LOW_BRIGHTNESS="${POWERSAVE_BRIGHTNESS:-10%}"
+
+msg()  { printf '\033[32m==> %s %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
+warn() { printf '\033[33m==> %s %s\033[0m\n' "$(date +%H:%M:%S)" "$*" >&2; }
+error(){ printf '\033[31m==> %s %s\033[0m\n' "$(date +%H:%M:%S)" "$*" >&2; }
+die()  { error "$@"; exit 1; }
+
+_show_help() {
+    cat <<'EOF'
+Usage: powersave <on|off|toggle|status>
+
+    on       snapshot current settings, then apply the cheap profile
+    off      restore the snapshot
+    toggle   on if idle, off if active
+    status   print active flag and current knobs
+
+Env:
+    POWERSAVE_BRIGHTNESS   backlight target for on (default 10%)
+    POWERSAVE_STATE        snapshot path (default $XDG_RUNTIME_DIR/powersave.state)
+EOF
 }
 
-_msg2() {
-    echo -e "  -> $@"
+_need() {
+    command -v "$1" >/dev/null 2>&1 || die "missing $1"
 }
 
-indent() {
-    sed "s/^/$(printf "%${1}s" " ")/g"
+_sudo_ok() {
+    sudo -n true 2>/dev/null
 }
 
-refresh() {
-    _msg1 "Changing refresh"
-    local flag="$1"
-    local refresh
+_sysfs_read() {
+    local path=$1
+    [[ -r $path ]] || return 1
+    local value
+    value=$(<"$path")
+    value=${value%%$'\n'}
+    printf '%s' "$value"
+}
 
-    if [ "$flag" = "low" ]; then
-        refresh=60
-    else
-        refresh=165.003
+_sysfs_write() {
+    local path=$1 value=$2
+    [[ -e $path ]] || return 1
+
+    if [[ -w $path ]]; then
+        printf '%s\n' "$value" >"$path"
+        return 0
     fi
 
-    _msg2 "Change refresh rate to $refresh"
-    wlr-randr --output eDP-1 --mode 2560x1440@$refresh --pos 2560,0
-}
-
-brightness() {
-    _msg1 "Changing backlight"
-    local flag="$1"
-    local v=200
-
-    if [ "$flag" = "low" ]; then
-        brightnessctl s $v |& indent 4
-    else
-        :
+    if _sudo_ok; then
+        printf '%s\n' "$value" | sudo -n tee "$path" >/dev/null
+        return 0
     fi
-    _msg2 "Change backlight to $v"
+
+    warn "skip $path (need writable sysfs or sudo -n)"
+    return 1
 }
 
-cpupower() {
-    flag="$1"
+_aspm_current() {
+    local raw
+    raw=$(_sysfs_read /sys/module/pcie_aspm/parameters/policy) || return 1
+    if [[ $raw =~ \[([^]]+)\] ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
+        return 0
+    fi
+    printf '%s' "$raw"
+}
 
-    if [ "$flag" = "low" ]; then
-        sudo cpupower frequency-set -g powersave
+_fmt_mode() {
+    local width=$1 height=$2 mhz=$3
+    printf '%sx%s@%d.%03d' "$width" "$height" "$((mhz / 1000))" "$((mhz % 1000))"
+}
+
+_output_rows() {
+    niri msg --json outputs | jq -r '
+        to_entries[]
+        | .key as $name
+        | .value as $o
+        | select($o.current_mode != null)
+        | $o.modes[$o.current_mode] as $cur
+        | ([$o.modes[] | select(.width == $cur.width and .height == $cur.height)] | min_by(.refresh_rate)) as $low
+        | [$name, $cur.width, $cur.height, $cur.refresh_rate, $low.refresh_rate]
+        | @tsv
+    '
+}
+
+_state_get() {
+    local key=$1
+    [[ -f $STATE_FILE ]] || return 1
+    local line
+    line=$(grep -E "^${key}=" "$STATE_FILE" | tail -n1) || return 1
+    printf '%s' "${line#*=}"
+}
+
+_is_active() {
+    [[ $(_state_get ACTIVE 2>/dev/null || true) == 1 ]]
+}
+
+_write_state() {
+    local tmp
+    tmp=$(mktemp "${STATE_FILE}.XXXXXX")
+    cat >"$tmp"
+    mv "$tmp" "$STATE_FILE"
+}
+
+_snapshot() {
+    local brightness profile gpu aspm name width height cur_mhz low_mhz
+
+    {
+        printf 'ACTIVE=1\n'
+
+        if command -v brightnessctl >/dev/null 2>&1; then
+            brightness=$(brightnessctl -c backlight g 2>/dev/null || true)
+            [[ -n $brightness ]] && printf 'BRIGHTNESS=%s\n' "$brightness"
+        fi
+
+        if command -v powerprofilesctl >/dev/null 2>&1; then
+            profile=$(powerprofilesctl get 2>/dev/null || true)
+            [[ -n $profile ]] && printf 'POWER_PROFILE=%s\n' "$profile"
+        fi
+
+        gpu=$(_sysfs_read /sys/class/drm/card1/device/power_dpm_force_performance_level 2>/dev/null || true)
+        [[ -n $gpu ]] && printf 'GPU_DPM=%s\n' "$gpu"
+
+        aspm=$(_aspm_current 2>/dev/null || true)
+        [[ -n $aspm ]] && printf 'ASPM=%s\n' "$aspm"
+
+        if command -v niri >/dev/null 2>&1; then
+            while IFS=$'\t' read -r name width height cur_mhz low_mhz; do
+                [[ -n $name ]] || continue
+                printf 'MODE_%s=%s\n' "$name" "$(_fmt_mode "$width" "$height" "$cur_mhz")"
+            done < <(_output_rows)
+        fi
+    } | _write_state
+}
+
+_apply_outputs_low() {
+    local name width height cur_mhz low_mhz cur_mode low_mode
+
+    command -v niri >/dev/null 2>&1 || { warn "skip outputs (no niri)"; return 0; }
+    command -v jq >/dev/null 2>&1 || { warn "skip outputs (no jq)"; return 0; }
+
+    while IFS=$'\t' read -r name width height cur_mhz low_mhz; do
+        [[ -n $name ]] || continue
+        cur_mode=$(_fmt_mode "$width" "$height" "$cur_mhz")
+        low_mode=$(_fmt_mode "$width" "$height" "$low_mhz")
+        if [[ $cur_mode == "$low_mode" ]]; then
+            msg "-> $name already $cur_mode"
+            continue
+        fi
+        msg "-> $name $cur_mode -> $low_mode"
+        niri msg output "$name" mode "$low_mode" || warn "failed niri mode $name $low_mode"
+    done < <(_output_rows)
+}
+
+_restore_outputs() {
+    local line name mode
+
+    command -v niri >/dev/null 2>&1 || return 0
+
+    while IFS= read -r line; do
+        case $line in
+            MODE_*=*)
+                name=${line#MODE_}
+                name=${name%%=*}
+                mode=${line#*=}
+                msg "-> $name -> $mode"
+                niri msg output "$name" mode "$mode" || warn "failed niri mode $name $mode"
+                ;;
+        esac
+    done <"$STATE_FILE"
+}
+
+_apply_brightness_low() {
+    local current max target
+
+    command -v brightnessctl >/dev/null 2>&1 || { warn "skip backlight (no brightnessctl)"; return 0; }
+
+    current=$(brightnessctl -c backlight g)
+    max=$(brightnessctl -c backlight m)
+
+    if [[ $LOW_BRIGHTNESS == *% ]]; then
+        target=$((max * ${LOW_BRIGHTNESS%\%} / 100))
     else
-        sudo cpupower frequency-set -g performance
+        target=$LOW_BRIGHTNESS
+    fi
+
+    if (( current <= target )); then
+        msg "-> backlight already ${current}/${max}"
+        return 0
+    fi
+
+    msg "-> backlight ${current} -> ${LOW_BRIGHTNESS}"
+    brightnessctl -c backlight -q s "$LOW_BRIGHTNESS"
+}
+
+_restore_brightness() {
+    local brightness
+    brightness=$(_state_get BRIGHTNESS) || return 0
+    command -v brightnessctl >/dev/null 2>&1 || return 0
+    msg "-> backlight -> ${brightness}"
+    brightnessctl -c backlight -q s "$brightness"
+}
+
+_apply_gpu_low() {
+    local path=/sys/class/drm/card1/device/power_dpm_force_performance_level
+    [[ -e $path ]] || { msg "-> gpu dpm absent"; return 0; }
+    msg "-> gpu dpm -> low"
+    _sysfs_write "$path" low || true
+}
+
+_restore_gpu() {
+    local gpu path=/sys/class/drm/card1/device/power_dpm_force_performance_level
+    gpu=$(_state_get GPU_DPM) || return 0
+    [[ -e $path ]] || return 0
+    msg "-> gpu dpm -> ${gpu}"
+    _sysfs_write "$path" "$gpu" || true
+}
+
+_apply_aspm_low() {
+    local path=/sys/module/pcie_aspm/parameters/policy
+    [[ -e $path ]] || { msg "-> aspm absent"; return 0; }
+    msg "-> aspm -> powersupersave"
+    _sysfs_write "$path" powersupersave || true
+}
+
+_restore_aspm() {
+    local aspm path=/sys/module/pcie_aspm/parameters/policy
+    aspm=$(_state_get ASPM) || return 0
+    [[ -e $path ]] || return 0
+    msg "-> aspm -> ${aspm}"
+    _sysfs_write "$path" "$aspm" || true
+}
+
+_apply_profile_low() {
+    command -v powerprofilesctl >/dev/null 2>&1 || return 0
+    msg "-> power profile -> power-saver"
+    powerprofilesctl set power-saver
+}
+
+_restore_profile() {
+    local profile
+    profile=$(_state_get POWER_PROFILE) || return 0
+    command -v powerprofilesctl >/dev/null 2>&1 || return 0
+    msg "-> power profile -> ${profile}"
+    powerprofilesctl set "$profile"
+}
+
+_cmd_on() {
+    if _is_active; then
+        msg "already on, keeping snapshot at $STATE_FILE"
+    else
+        _need jq
+        _snapshot
+        msg "snapshot $STATE_FILE"
+    fi
+
+    _apply_outputs_low
+    _apply_brightness_low
+    _apply_profile_low
+    _apply_gpu_low
+    _apply_aspm_low
+    msg "powersave on"
+}
+
+_cmd_off() {
+    _is_active || die "not active (no snapshot at $STATE_FILE)"
+
+    _restore_outputs
+    _restore_brightness
+    _restore_profile
+    _restore_gpu
+    _restore_aspm
+
+    rm -f "$STATE_FILE"
+    msg "powersave off"
+}
+
+_cmd_toggle() {
+    if _is_active; then
+        _cmd_off
+    else
+        _cmd_on
     fi
 }
 
-aspm() {
-	flag=$1
-	local arg
+_cmd_status() {
+    local brightness gpu aspm profile name width height cur_mhz low_mhz
 
-	if [ "$flag" = "low" ]; then
-	    arg="powersupersave"
-	else
-	    arg="default"
-	fi
-	echo $arg | sudo tee /sys/module/pcie_aspm/parameters/policy
+    if _is_active; then
+        printf 'active: yes (%s)\n' "$STATE_FILE"
+    else
+        printf 'active: no\n'
+    fi
+
+    if command -v brightnessctl >/dev/null 2>&1; then
+        brightness=$(brightnessctl -c backlight -m i 2>/dev/null || true)
+        [[ -n $brightness ]] && printf 'backlight: %s\n' "$brightness"
+    fi
+
+    if command -v powerprofilesctl >/dev/null 2>&1; then
+        profile=$(powerprofilesctl get 2>/dev/null || true)
+        [[ -n $profile ]] && printf 'profile: %s\n' "$profile"
+    fi
+
+    gpu=$(_sysfs_read /sys/class/drm/card1/device/power_dpm_force_performance_level 2>/dev/null || true)
+    [[ -n $gpu ]] && printf 'gpu dpm: %s\n' "$gpu"
+
+    aspm=$(_aspm_current 2>/dev/null || true)
+    [[ -n $aspm ]] && printf 'aspm: %s\n' "$aspm"
+
+    if command -v niri >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+        while IFS=$'\t' read -r name width height cur_mhz low_mhz; do
+            [[ -n $name ]] || continue
+            printf 'output %s: %s (low %s)\n' \
+                "$name" \
+                "$(_fmt_mode "$width" "$height" "$cur_mhz")" \
+                "$(_fmt_mode "$width" "$height" "$low_mhz")"
+        done < <(_output_rows)
+    fi
 }
 
-_low() {
-	aspm low
-	brightness low
-	refresh low
+_main() {
+    local cmd=${1:-}
+
+    case $cmd in
+        on|low) _cmd_on ;;
+        off|high|restore) _cmd_off ;;
+        toggle) _cmd_toggle ;;
+        status) _cmd_status ;;
+        -h|--help|help|'') _show_help ;;
+        *) die "unknown command: $cmd" ;;
+    esac
 }
 
-if [ $# -eq 0 ]; then
-	_low
-fi
+_main "$@"

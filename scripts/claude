@@ -14,7 +14,7 @@ _use_deepseek() {
 }
 
 _use_glm() {
-    export ANTHROPIC_BASE_URL="https://open.bigmodel.cn/api/anthropic"
+    export ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic"
     export ANTHROPIC_AUTH_TOKEN="$(pass GLM_API_KEY)"
     export ANTHROPIC_MODEL=glm-5.3
     export ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.3

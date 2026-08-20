@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG=.ssh-remote.sh
+CLI_WORKDIR=
+
+error(){ printf "\033[31m==> %s ~ %s\033[0m\n" "$(date +%H:%M:%S)" "$*" >&2 ; }
+die()  { error "$@"; exit 1; }
+
+_usage() {
+    printf '%s\n' \
+        "Usage: sync-do [--workdir /path/to/dir] <<EOF" \
+        "commands" \
+        "EOF" \
+        "" \
+        "Source ./${CONFIG} for host and workdir." \
+        "--workdir overrides workdir for this run."
+}
+
+_parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --workdir)
+                [[ $# -ge 2 ]] || die "option --workdir needs a path"
+                CLI_WORKDIR="$2"
+                shift 2
+                ;;
+            -h|--help)
+                _usage
+                exit 0
+                ;;
+            *)
+                die "unknown argument: $1"
+                ;;
+        esac
+    done
+}
+
+_main() {
+    local body workdir_q pat
+    local -a exclude_args=()
+
+    _parse_args "$@"
+
+    if [[ -t 0 ]]; then
+        die "need a script on stdin"
+    fi
+    body=$(cat)
+
+    command -v ssh >/dev/null || die "ssh not found in PATH"
+    command -v rsync >/dev/null || die "rsync not found in PATH"
+
+    [[ -f $CONFIG ]] || die "missing $CONFIG"
+    # shellcheck source=/dev/null
+    source "$CONFIG"
+
+    if [[ -n $CLI_WORKDIR ]]; then
+        workdir="$CLI_WORKDIR"
+    fi
+
+    [[ -n ${host:-} ]] || die "no host in $CONFIG"
+    [[ -n ${workdir:-} ]] || die "no workdir: set it in $CONFIG or pass --workdir"
+
+    if [[ ${excludes+x} ]]; then
+        for pat in "${excludes[@]}"; do
+            exclude_args+=(--exclude "$pat")
+        done
+    fi
+
+    ssh -- "$host" "mkdir -p $(printf '%q' "$workdir")"
+    rsync -a \
+        --delete \
+        --delete-after \
+        --exclude .git \
+        --exclude "$CONFIG" \
+        --filter=':- .gitignore' \
+        "${exclude_args[@]}" \
+        ./ \
+        "${host}:${workdir}/"
+
+    workdir_q=$(printf '%q' "$workdir")
+    {
+        printf 'set -euo pipefail\n'
+        printf 'workdir=%s\n' "$workdir_q"
+        printf 'cd "$workdir"\n'
+        printf '%s\n' "$body"
+    } | ssh -- "$host" bash
+}
+
+_main "$@"
