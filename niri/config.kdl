@@ -254,7 +254,7 @@ spawn-at-startup "wl-paste" "--watch" "rglauncher-clip-writer"
 spawn-at-startup  "awww-daemon"
 spawn-at-startup "gammastep" "-l" "50:120"
 
-spawn-at-startup "swayidle" "-w" "timeout" "600" "~/files/config/scripts/screenlock" "off" "before-sleep" "~/files/config/scripts/screenlock"
+spawn-at-startup "swayidle" "-w" "timeout" "600" "screenlock off" "before-sleep" "screenlock"
 
 // Uncomment this line to ask the clients to omit their client-side decorations if possible.
 // If the client will specifically ask for CSD, the request will be honored.
@@ -483,7 +483,7 @@ binds {
     Mod+X { spawn "emacs"; }
     Mod+D { spawn "rglauncher" "-t" "app,win,calc"; }
     Mod+S { spawn "rglauncher" "-t" "clip"; }
-    Mod+Alt+L { spawn "~/files/config/scripts/waylock"; }
+    Mod+Alt+L { spawn "screenlock"; }
 
     // You can also use a shell. Do this if you need pipes, multiple commands, etc.
     // Note: the entire command goes as a single argument in the end.
