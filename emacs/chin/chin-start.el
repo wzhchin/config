@@ -104,24 +104,7 @@ Keep the selected faces transparent on TTY frames."
   "Load staged configuration FILE from `user-emacs-directory'."
   (load (expand-file-name file user-emacs-directory) nil t t))
 
-(defvar chin/first-second-startup-delay 1.0
-  "Idle seconds before loading the first-second stage.")
-
-(defvar chin/first-second-startup-timer nil)
-
-(defun chin/load-first-second ()
-  "Load configuration deferred until the first idle second."
-  (setq chin/first-second-startup-timer nil)
-  (chin/load-stage-file "chin/chin-first-second.el"))
-
-(defun chin/schedule-first-second ()
-  "Schedule the first-second configuration stage."
-  (unless chin/first-second-startup-timer
-    (setq chin/first-second-startup-timer
-          (run-with-idle-timer chin/first-second-startup-delay nil
-                               #'chin/load-first-second))))
-
-(add-hook 'emacs-startup-hook #'chin/schedule-first-second)
+(require 'chin-idle)
 
 (defvar chin/first-call-loaded nil)
 
