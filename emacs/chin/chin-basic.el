@@ -1,4 +1,4 @@
-;;; must-have.el --- Minimal interactive configuration  -*- lexical-binding: t; -*-
+;;; chin-interactive.el --- Minimal interactive configuration  -*- lexical-binding: t; -*-
 
 ;;; Commentary:
 ;; Keep startup limited to the editing features used in every session.
@@ -6,10 +6,7 @@
 
 ;;; Code:
 
-(setq inhibit-splash-screen t
-      inhibit-startup-screen t
-      inhibit-startup-message t
-      ring-bell-function #'ignore)
+(setq ring-bell-function #'ignore)
 (show-paren-mode 1)
 
 ;; Match the fringe background to the default face.
@@ -239,6 +236,14 @@ With INSERT-BLANK-P non-nil, do not insert a replacement space."
       corfu-preview-current nil
       corfu-quit-no-match 'separator)
 (autoload #'corfu-mode "corfu" nil t)
+
+;; Emacs 31 can render Corfu's popup info in TTY child frames.
+(with-eval-after-load 'corfu
+  (when (and (not (display-graphic-p))
+             (featurep 'tty-child-frames)
+             (require 'corfu-popupinfo nil t))
+    (corfu-popupinfo-mode 1)))
+
 (add-hook 'prog-mode-hook #'chin/enable-corfu-in-file-buffer)
 
 (autoload #'consult-buffer "consult" nil t)
@@ -248,5 +253,5 @@ With INSERT-BLANK-P non-nil, do not insert a replacement space."
 (global-set-key (kbd "M-4") #'consult-buffer)
 (global-set-key (kbd "M-s l") #'consult-line)
 
-(provide 'must-have)
-;;; must-have.el ends here
+(provide 'chin-interactive)
+;;; chin-interactive.el ends here

@@ -36,12 +36,16 @@
        (seq-filter
         #'file-directory-p
         (directory-files package-user-dir t "\\`[^.]" t))))
-  (dolist (package '(compat goto-chg evil vertico comment-dwim-2
+  (dolist (package '(goto-chg evil vertico comment-dwim-2
                      evil-collection expand-region corfu consult))
     (chin/add-package-to-load-path package installed-directories)))
 
 (add-to-list 'load-path (expand-file-name "lisp" user-emacs-directory))
 (add-to-list 'load-path (expand-file-name "chin" user-emacs-directory))
+
+;; Emacs 31 caches directory contents while resolving `load-path`.
+(setq load-path-filter-function
+      #'load-path-filter-cache-directory-files)
 
 ;;; Encoding
 (when (fboundp 'set-charset-priority)
@@ -59,44 +63,25 @@
                    "\\(?:^\\|/\\)README\\.[Mm][Dd]\\'"))
   (add-to-list 'auto-mode-alist (cons pattern #'markdown-ts-mode)))
 
-(dolist (mapping '(("\\.sh\\'" . bash-ts-mode)
-                   ("\\.c\\'" . c-ts-mode)
-                   ("\\.\\(?:cc\\|cpp\\|cxx\\|hh\\|hpp\\|hxx\\)\\'" . c++-ts-mode)
-                   ("\\.css\\'" . css-ts-mode)
-                   ("\\.html?\\'" . html-ts-mode)
-                   ("\\.java\\'" . java-ts-mode)
-                   ("\\.\\(?:js\\|mjs\\|cjs\\)\\'" . js-ts-mode)
-                   ("\\.json\\'" . json-ts-mode)
-                   ("\\.py\\'" . python-ts-mode)
-                   ("\\.rs\\'" . rust-ts-mode)
-                   ("\\.toml\\'" . toml-ts-mode)
-                   ("\\.ts\\'" . typescript-ts-mode)
-                   ("\\.tsx\\'" . tsx-ts-mode)
-                   ("\\.ya?ml\\'" . yaml-ts-mode)))
-  (add-to-list 'auto-mode-alist mapping))
-
-(defun chin/enable-common-treesit-modes ()
-  "Prefer available tree-sitter modes for common file types."
-  (when (and (fboundp 'treesit-available-p)
-             (treesit-available-p))
-    (dolist (mapping '((bash sh-mode bash-ts-mode)
-                       (c c-mode c-ts-mode)
-                       (cpp c++-mode c++-ts-mode)
-                       (css css-mode css-ts-mode)
-                       (html html-mode html-ts-mode)
-                       (java java-mode java-ts-mode)
-                       (javascript js-mode js-ts-mode)
-                       (json js-json-mode json-ts-mode)
-                       (python python-mode python-ts-mode)
-                       (rust rust-mode rust-ts-mode)
-                       (toml conf-toml-mode toml-ts-mode)
-                       (typescript typescript-mode typescript-ts-mode)
-                       (yaml yaml-mode yaml-ts-mode)))
-      (pcase-let ((`(,language ,classic-mode ,treesit-mode) mapping))
-        (when (and (treesit-language-available-p language)
-                   (fboundp treesit-mode))
-          (setf (alist-get classic-mode major-mode-remap-alist)
-                treesit-mode))))))
+;;; Tree-sitter
+;; `setopt` invokes Emacs 31's setter and updates
+;; `major-mode-remap-alist`; a plain `setq` would not do that.
+(setopt treesit-auto-install-grammar 'never
+        treesit-enabled-modes
+        '(bash-ts-mode
+          c-ts-mode
+          c++-ts-mode
+          css-ts-mode
+          mhtml-ts-mode
+          java-ts-mode
+          js-ts-mode
+          json-ts-mode
+          python-ts-mode
+          rust-ts-mode
+          toml-ts-mode
+          typescript-ts-mode
+          tsx-ts-mode
+          yaml-ts-mode))
 
 ;;; Deferred interactive features
 (defvar chin/deferred-startup-delay 0.05
@@ -107,9 +92,9 @@
 (defun chin/load-interactive-features ()
   "Load editing features after the initial frame has been displayed."
   (setq chin/deferred-startup-timer nil)
-  (chin/enable-common-treesit-modes)
-  (let ((source (expand-file-name "chin/must-have.el" user-emacs-directory))
-        (compiled (expand-file-name "must-have.elc" user-emacs-directory)))
+  (let* ((source (expand-file-name "chin/chin-basic.el" user-emacs-directory))
+         ;; Byte compilation writes the .elc beside the source file.
+         (compiled (concat (file-name-sans-extension source) ".elc")))
     (load (if (and (file-exists-p compiled)
                    (not (file-newer-than-file-p source compiled)))
               compiled
