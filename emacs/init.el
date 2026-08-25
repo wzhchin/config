@@ -37,7 +37,8 @@
         #'file-directory-p
         (directory-files package-user-dir t "\\`[^.]" t))))
   (dolist (package '(goto-chg evil vertico comment-dwim-2
-                     evil-collection expand-region corfu consult))
+                     evil-collection expand-region corfu consult
+                     git-gutter))
     (chin/add-package-to-load-path package installed-directories)))
 
 (add-to-list 'load-path (expand-file-name "lisp" user-emacs-directory))
@@ -46,6 +47,9 @@
 ;; Emacs 31 caches directory contents while resolving `load-path`.
 (setq load-path-filter-function
       #'load-path-filter-cache-directory-files)
+
+;;; Staged configuration
+(require 'chin-start)
 
 ;;; Encoding
 (when (fboundp 'set-charset-priority)
@@ -82,30 +86,3 @@
           typescript-ts-mode
           tsx-ts-mode
           yaml-ts-mode))
-
-;;; Deferred interactive features
-(defvar chin/deferred-startup-delay 0.05
-  "Idle seconds before loading interactive editing features.")
-
-(defvar chin/deferred-startup-timer nil)
-
-(defun chin/load-interactive-features ()
-  "Load editing features after the initial frame has been displayed."
-  (setq chin/deferred-startup-timer nil)
-  (let* ((source (expand-file-name "chin/chin-basic.el" user-emacs-directory))
-         ;; Byte compilation writes the .elc beside the source file.
-         (compiled (concat (file-name-sans-extension source) ".elc")))
-    (load (if (and (file-exists-p compiled)
-                   (not (file-newer-than-file-p source compiled)))
-              compiled
-            source)
-          nil t t)))
-
-(defun chin/schedule-interactive-features ()
-  "Schedule nonessential interactive features after initial display."
-  (unless chin/deferred-startup-timer
-    (setq chin/deferred-startup-timer
-          (run-with-idle-timer chin/deferred-startup-delay nil
-                               #'chin/load-interactive-features))))
-
-(add-hook 'emacs-startup-hook #'chin/schedule-interactive-features)
