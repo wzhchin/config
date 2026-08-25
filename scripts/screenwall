@@ -2,38 +2,44 @@
 
 set -euo pipefail
 
-IMAGE_DIR=""
+IMAGE_FILE=""
 OUTPUT=""
 INTERVAL_SECONDS=100
 ARGS=()
 
+show_wall() {
+    local image="$1"
+    awww img \
+         --resize crop \
+         --transition-type push-right \
+         --transition-duration 2 \
+         "${ARGS[@]}" \
+         "$image"
+
+}
+
 while [ $# -gt 0 ]; do
     case $1 in
-        -d)
-            shift
-            IMAGE_DIR="$1"
-            ;;
         -o)
             shift
             ARGS+=("--outputs" "$1")
+            ;;
+        *)
+            IMAGE_FILE="$1"
             ;;
     esac
     shift
 done
 
-if [ -z "$IMAGE_DIR" ]; then
+if [ -z "$IMAGE_FILE" ]; then
     exit 1
-fi
-
-while true; do
-    find "${IMAGE_DIR}" -type f | while read image; do
-        awww img \
-             --resize crop \
-             --transition-type push-right \
-             --transition-duration 2 \
-             "${ARGS[@]}" \
-             "$image"
-
-        sleep "$INTERVAL_SECONDS"
+elif [ -f "$IMAGE_FILE" ]; then
+    show_wall "$IMAGE_FILE"
+elif [ -d "$IMAGE_FILE" ]; then
+    while true; do
+        find "${IMAGE_FILE}" -type f | while read image; do
+	    show_wall "$image"
+            sleep "$INTERVAL_SECONDS"
+        done
     done
-done
+fi
