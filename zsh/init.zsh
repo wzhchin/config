@@ -42,22 +42,53 @@ WORDCHARS='*?_-[]~&;!#$%^(){}<>|'
 ### Completion
 ########################################
 # https://gist.github.com/ctechols/ca1035271ad134841284
-() {
-    # http://zsh.sourceforge.net/Doc/Release/Options.html#Scripts-and-Functions
-    setopt LOCAL_OPTIONS extendedglob nullglob
-    autoload -Uz compinit
+autoload -Uz compinit
+ZSH_COMPDUMP="$CHIN_ZSH_CACHE_DIR/zcompdump"
+
+# Defer the expensive first compinit until completion is actually requested.
+typeset -g _CHIN_COMPLETION_INITIALIZED=0
+
+_chin_initialize_completion() {
+    (( _CHIN_COMPLETION_INITIALIZED )) && return 0
+
+    setopt localoptions extendedglob nullglob
     # http://zsh.sourceforge.net/Doc/Release/Expansion.html#Glob-Qualifiers
     # http://zsh.sourceforge.net/Doc/Release/Conditional-Expressions.html#Conditional-Expressions
-    ZSH_COMPDUMP="$CHIN_ZSH_CACHE_DIR/zcompdump"
     if [[ ! -e "${ZSH_COMPDUMP}" || -n ${~"${ZSH_COMPDUMP}"}(#qmh+24) ]]; then
-	    echo "${ZSH_COMPDUMP}" 
-	    rm -f "$ZSH_COMPDUMP"
-	    compinit -d "${ZSH_COMPDUMP}" 
+        rm -f "$ZSH_COMPDUMP"
+        compinit -d "$ZSH_COMPDUMP"
     else
-	    compinit -C -d "${ZSH_COMPDUMP}"
+        # Keep security checks for missing/stale dumps; -C is only for fresh caches.
+        compinit -C -d "$ZSH_COMPDUMP"
     fi
 
+    _CHIN_COMPLETION_INITIALIZED=1
 }
+
+chin-init-completion() {
+    _chin_initialize_completion
+}
+
+_chin_lazy_completion() {
+    local widget="$WIDGET"
+    _chin_initialize_completion || return
+    # compinit replaces this placeholder with the real completion widget.
+    zle "$widget"
+}
+
+if [[ -o zle ]]; then
+    for _chin_completion_widget in \
+        complete-word \
+        delete-char-or-list \
+        expand-or-complete \
+        expand-or-complete-prefix \
+        list-choices \
+        menu-complete \
+        menu-expand-or-complete; do
+        zle -N "$_chin_completion_widget" _chin_lazy_completion
+    done
+    unset _chin_completion_widget
+fi
 
 
 export EDITOR=vim
@@ -81,7 +112,6 @@ HISTDUP=erase               #Erase duplicates in the history file
 setopt EXTENDED_HISTORY
 setopt HIST_EXPIRE_DUPS_FIRST
 setopt HIST_IGNORE_DUPS
-setopt HIST_IGNORE_SPACE
 setopt HIST_IGNORE_SPACE
 setopt HIST_SAVE_NO_DUPS
 setopt HIST_VERIFY
