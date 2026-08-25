@@ -90,10 +90,6 @@ Keep the selected faces transparent on TTY frames."
 
 (evil-define-key 'normal 'global
   (kbd "SPC") chin/evil-leader-map
-  (kbd "C-h") #'windmove-left
-  (kbd "C-j") #'windmove-down
-  (kbd "C-k") #'windmove-up
-  (kbd "C-l") #'windmove-right
   (kbd "C-e") #'end-of-line
   (kbd "C-r") #'isearch-backward
   (kbd "g d") #'xref-find-definitions

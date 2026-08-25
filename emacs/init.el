@@ -51,6 +51,10 @@
 ;;; Staged configuration
 (require 'chin-start)
 
+;;; Confirmation prompts and symbolic links
+(setopt use-short-answers t
+        vc-follow-symlinks 'ask)
+
 ;;; Encoding
 (when (fboundp 'set-charset-priority)
   (set-charset-priority 'unicode))
