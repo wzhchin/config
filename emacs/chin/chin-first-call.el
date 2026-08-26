@@ -146,6 +146,12 @@ With INSERT-BLANK-P non-nil, do not insert a replacement space."
 (declare-function consult-buffer "consult")
 (declare-function consult-line "consult")
 (declare-function consult-ripgrep "consult")
+(declare-function eglot-ensure "eglot")
+(defvar xref--xref-buffer-mode-map)
+(declare-function xref-goto-xref "xref")
+(declare-function xref-next-line "xref")
+(declare-function xref-prev-line "xref")
+(declare-function xref-quit-and-pop-marker-stack "xref")
 
 (setq corfu-auto t
       corfu-auto-delay 0.2
@@ -162,6 +168,37 @@ With INSERT-BLANK-P non-nil, do not insert a replacement space."
     (corfu-popupinfo-mode 1)))
 
 (add-hook 'prog-mode-hook #'chin/enable-corfu-in-file-buffer)
+
+(with-eval-after-load 'xref
+  ;; Keep xref navigation predictable in both Evil and regular states.
+  ;; Bind both return events because terminal and GUI frames can produce
+  ;; different events for the same physical key.
+  (keymap-set xref--xref-buffer-mode-map "RET" #'xref-goto-xref)
+  (keymap-set xref--xref-buffer-mode-map "<return>" #'xref-goto-xref)
+  (keymap-set xref--xref-buffer-mode-map "n" #'xref-next-line)
+  (keymap-set xref--xref-buffer-mode-map "p" #'xref-prev-line)
+  (keymap-set xref--xref-buffer-mode-map "q"
+              #'xref-quit-and-pop-marker-stack)
+  (evil-define-key 'normal xref--xref-buffer-mode-map
+    (kbd "RET") #'xref-goto-xref
+    (kbd "<return>") #'xref-goto-xref
+    "n" #'xref-next-line
+    "p" #'xref-prev-line
+    "q" #'xref-quit-and-pop-marker-stack))
+
+(defun chin/dev-mode ()
+  "Enable development tools in the current programming buffer."
+  (interactive)
+  (unless (derived-mode-p 'prog-mode)
+    (user-error "Dev mode is only available in programming buffers"))
+  (corfu-mode 1)
+  (require 'eglot)
+  (eglot-ensure)
+  (message "Development mode enabled"))
+
+;; Keep the requested M-x name while retaining the configuration's `chin/'
+;; namespace for the implementation.
+(defalias 'dev-mode #'chin/dev-mode)
 
 (autoload #'consult-buffer "consult" nil t)
 (autoload #'consult-line "consult" nil t)
