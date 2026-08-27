@@ -44,9 +44,9 @@
 (add-to-list 'load-path (expand-file-name "lisp" user-emacs-directory))
 (add-to-list 'load-path (expand-file-name "chin" user-emacs-directory))
 
-;; Emacs 31 caches directory contents while resolving `load-path`.
-(setq load-path-filter-function
-      #'load-path-filter-cache-directory-files)
+;;; Mode line
+;; Emacs 31 folds minor-mode lighters natively.
+(setopt mode-line-collapse-minor-modes t)
 
 ;;; Staged configuration
 (require 'chin-start)

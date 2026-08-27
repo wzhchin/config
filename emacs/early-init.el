@@ -13,7 +13,6 @@
 (scroll-bar-mode -1)
 (add-to-list 'default-frame-alist '(font . "Sarasa Mono SC-12"))
 (add-to-list 'default-frame-alist '(internal-border-width . 12))
-(add-to-list 'default-frame-alist '(alpha-background . 70))
 
 (setq-default truncate-lines nil)
 (setq truncate-partial-width-windows nil
@@ -22,6 +21,14 @@
 
 (setq package-enable-at-startup nil
       package-quickstart nil)
+
+;; Emacs 31 can filter `load-path' before trying each directory while loading
+;; a library.  Set this in early-init so the main init file benefits too.
+(when (and (boundp 'load-path-filter-function)
+           (fboundp 'load-path-filter-cache-directory-files))
+  (setopt load-path-filter-function
+          #'load-path-filter-cache-directory-files))
+
 (add-hook 'emacs-startup-hook
           (lambda ()
             (setq gc-cons-threshold (* 16 1024 1024)
