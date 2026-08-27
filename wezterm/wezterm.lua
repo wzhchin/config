@@ -133,14 +133,14 @@ return {
 			}
 		},
 		{
-			key = '5',
+			key = '3',
 			mods = 'CTRL',
 			action = act.SplitHorizontal {
 				domain = 'CurrentPaneDomain'
 			}
 		},
 		{
-			key = '3',
+			key = '2',
 			mods = 'CTRL',
 			action = act.SplitVertical {
 				domain = 'CurrentPaneDomain'
