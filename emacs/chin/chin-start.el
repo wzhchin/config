@@ -1,7 +1,8 @@
 ;;; chin-start.el --- Startup configuration  -*- lexical-binding: t; -*-
 
 ;;; Commentary:
-;; Keep only the configuration needed before the first command here.
+;; Keep only the configuration needed for the initial frame here.  Heavier
+;; packages are initialized by an idle timer and before the first command.
 
 ;;; Code:
 
@@ -38,14 +39,15 @@ Keep the selected faces transparent on TTY frames."
       evil-want-keybinding nil
       evil-undo-system 'undo-redo
       evil-disable-insert-state-bindings t)
-(require 'evil)
-(evil-mode 1)
-(setq evil-mode-line-format '(before . mode-line-front-space))
+
+(defvar chin/evil-initialized nil)
 
 (declare-function eglot-code-actions "eglot")
 (declare-function eglot-rename "eglot")
 (declare-function global-git-gutter-mode "git-gutter")
 (declare-function global-display-line-numbers-mode "display-line-numbers")
+(declare-function evil-define-key* "evil")
+(declare-function evil-mode "evil")
 
 ;; Keep both indicators synchronized; an enable-only binding would leave no
 ;; single shortcut to turn them off together.
@@ -88,17 +90,30 @@ Keep the selected faces transparent on TTY frames."
   "w" #'save-buffer
   "x" #'kill-current-buffer)
 
-(evil-define-key 'normal 'global
-  (kbd "SPC") chin/evil-leader-map
-  (kbd "C-e") #'end-of-line
-  (kbd "C-r") #'isearch-backward
-  (kbd "g d") #'xref-find-definitions
-  (kbd "g r") #'xref-find-references
-  (kbd "K") #'eldoc-doc-buffer
-  (kbd "U") #'evil-redo
-  (kbd "M-.") #'xref-find-definitions)
-(evil-define-key 'visual 'global
-  (kbd "DEL") #'delete-region)
+(defun chin/initialize-evil ()
+  "Load Evil and install its global configuration once."
+  (unless chin/evil-initialized
+    (require 'evil)
+    (evil-mode 1)
+    (setq evil-mode-line-format '(before . mode-line-front-space))
+    ;; Call the function behind `evil-define-key' so this file can be loaded
+    ;; before Evil itself is available.
+    (evil-define-key* 'normal 'global
+      (kbd "SPC") chin/evil-leader-map
+      (kbd "C-e") #'end-of-line
+      (kbd "C-r") #'isearch-backward
+      (kbd "g d") #'xref-find-definitions
+      (kbd "g r") #'xref-find-references
+      (kbd "K") #'eldoc-doc-buffer
+      (kbd "U") #'evil-redo
+      (kbd "M-.") #'xref-find-definitions)
+    (evil-define-key* 'visual 'global
+      (kbd "DEL") #'delete-region)
+    (setq chin/evil-initialized t)))
+
+;; Let the first idle cycle pay for Evil instead of the startup path.  The
+;; first-command hook below is a synchronous fallback for an immediate input.
+(run-with-idle-timer 0 nil #'chin/initialize-evil)
 
 (defun chin/load-stage-file (file)
   "Load staged configuration FILE from `user-emacs-directory'."
@@ -111,6 +126,7 @@ Keep the selected faces transparent on TTY frames."
 (defun chin/load-first-call ()
   "Load the remaining interactive configuration before the first command."
   (unless chin/first-call-loaded
+    (chin/initialize-evil)
     (chin/load-stage-file "chin/chin-first-call.el")
     (setq chin/first-call-loaded t)
     (remove-hook 'pre-command-hook #'chin/load-first-call)))
