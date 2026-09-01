@@ -186,6 +186,22 @@ With INSERT-BLANK-P non-nil, do not insert a replacement space."
     "p" #'xref-prev-line
     "q" #'xref-quit-and-pop-marker-stack))
 
+(with-eval-after-load 'eglot
+  ;; Covers both `chin/dev-mode' and `SPC c a/r' autoload.
+  (setq eglot-autoshutdown t
+        eglot-sync-connect nil
+        eglot-events-buffer-config '(:size 0 :format short)
+        eglot-report-progress nil
+        eglot-code-action-indications nil
+        eglot-max-file-watches 5000)
+  ;; On-type format is per-keystroke RPC.  Tree-sitter already fontifies.
+  ;; Emacs 31 auto-enables inlay hints and semantic tokens on manage.
+  (setq eglot-ignored-server-capabilities
+        '(:documentOnTypeFormattingProvider
+          :inlayHintProvider
+          :documentHighlightProvider
+          :semanticTokensProvider)))
+
 (defun chin/dev-mode ()
   "Enable development tools in the current programming buffer."
   (interactive)

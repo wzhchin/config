@@ -19,6 +19,10 @@
       scroll-step 1
       scroll-conservatively 10000)
 
+;; 1 MiB subprocess read cap for LSP JSON bursts.  Does not reserve
+;; memory; must not exceed /proc/sys/fs/pipe-max-size.
+(setq read-process-output-max (* 1024 1024))
+
 (setq package-enable-at-startup nil
       package-quickstart nil)
 
