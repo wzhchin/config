@@ -37,8 +37,8 @@ elif [ -f "$IMAGE_FILE" ]; then
     show_wall "$IMAGE_FILE"
 elif [ -d "$IMAGE_FILE" ]; then
     while true; do
-        find "${IMAGE_FILE}" -type f | while read image; do
-	    show_wall "$image"
+        find "${IMAGE_FILE}" -type f | sort -R | while read image; do
+            show_wall "$image"
             sleep "$INTERVAL_SECONDS"
         done
     done
