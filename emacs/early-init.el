@@ -30,8 +30,10 @@
 ;; a library.  Set this in early-init so the main init file benefits too.
 (when (and (boundp 'load-path-filter-function)
            (fboundp 'load-path-filter-cache-directory-files))
-  (setopt load-path-filter-function
-          #'load-path-filter-cache-directory-files))
+  ;; `load' reads this function directly; `setopt' needlessly loads Custom
+  ;; and its widget libraries during early init.
+  (setq load-path-filter-function
+        #'load-path-filter-cache-directory-files))
 
 (add-hook 'emacs-startup-hook
           (lambda ()
@@ -48,3 +50,26 @@
       initial-scratch-message nil
       initial-major-mode 'fundamental-mode
       auto-window-vscroll nil)
+
+;; Record the full startup duration after initial frame setup.
+;; https://www.jamescherti.com/measuring-emacs-startup-time/
+(defvar my-recorded-startup-time-message nil
+  "Stores the formatted string of the Emacs startup metrics.")
+
+(defun my-record-startup-time ()
+  "Calculate and record the elapsed startup time."
+  (setq my-recorded-startup-time-message
+        (format "Emacs loaded in %.3f seconds (Init time: %.3fs) with %d garbage collections."
+                (float-time (time-since before-init-time))
+                (float-time (time-subtract after-init-time before-init-time))
+                gcs-done))
+  (message "%s" my-recorded-startup-time-message))
+
+(defun my-display-startup-time ()
+  "Display the previously recorded Emacs startup time."
+  (interactive)
+  (if my-recorded-startup-time-message
+      (message "%s" my-recorded-startup-time-message)
+    (message "Startup time was not recorded.")))
+
+(add-hook 'emacs-startup-hook #'my-record-startup-time 99)
