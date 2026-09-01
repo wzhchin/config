@@ -23,6 +23,16 @@ _use_glm() {
     export CLAUDE_CODE_SUBAGENT_MODEL=glm-4.7
 }
 
+_use_glm53f() {
+    export ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic"
+    export ANTHROPIC_AUTH_TOKEN="$(pass GLM_API_KEY)"
+    export ANTHROPIC_MODEL=glm-5.3-flash
+    export ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.3-flash
+    export ANTHROPIC_DEFAULT_SONNET_MODEL=glm-5.3-flash
+    export ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-5.3-flash
+    export CLAUDE_CODE_SUBAGENT_MODEL=glm-5.3-flash
+}
+
 export API_TIMEOUT_MS="3000000"
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 export CLAUDE_CODE_EFFORT_LEVEL=high
@@ -33,6 +43,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
 	--deepseek) _use_deepseek ;;
 	--glm) _use_glm ;;
+	--glm-53f) _use_glm53f ;;
 	*) PASSTHROUGH_ARGS+=("$1") ;;
     esac
     shift
