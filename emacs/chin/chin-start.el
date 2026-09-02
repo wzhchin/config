@@ -95,7 +95,6 @@ Keep the selected faces transparent on TTY frames."
   (unless chin/evil-initialized
     (require 'evil)
     (evil-mode 1)
-    (setq evil-mode-line-format '(before . mode-line-front-space))
     ;; Call the function behind `evil-define-key' so this file can be loaded
     ;; before Evil itself is available.
     (evil-define-key* 'normal 'global
