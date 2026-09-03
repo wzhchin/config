@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+printf '%b\n' \
+  ' 0 black          \e[48;5;0m      \e[0m \e[38;5;0m1234567890;\e[0m' \
+  ' 1 red            \e[48;5;1m      \e[0m \e[38;5;1m1234567890;\e[0m' \
+  ' 2 green          \e[48;5;2m      \e[0m \e[38;5;2m1234567890;\e[0m' \
+  ' 3 yellow         \e[48;5;3m      \e[0m \e[38;5;3m1234567890;\e[0m' \
+  ' 4 blue           \e[48;5;4m      \e[0m \e[38;5;4m1234567890;\e[0m' \
+  ' 5 magenta        \e[48;5;5m      \e[0m \e[38;5;5m1234567890;\e[0m' \
+  ' 6 cyan           \e[48;5;6m      \e[0m \e[38;5;6m1234567890;\e[0m' \
+  ' 7 white          \e[48;5;7m      \e[0m \e[38;5;7m1234567890;\e[0m' \
+  ' 8 BRIGHT black   \e[48;5;8m      \e[0m \e[38;5;8m1234567890;\e[0m' \
+  ' 9 BRIGHT red     \e[48;5;9m      \e[0m \e[38;5;9m1234567890;\e[0m' \
+  '10 BRIGHT green   \e[48;5;10m      \e[0m \e[38;5;10m1234567890;\e[0m' \
+  '11 BRIGHT yellow  \e[48;5;11m      \e[0m \e[38;5;11m1234567890;\e[0m' \
+  '12 BRIGHT blue    \e[48;5;12m      \e[0m \e[38;5;12m1234567890;\e[0m' \
+  '13 BRIGHT magenta \e[48;5;13m      \e[0m \e[38;5;13m1234567890;\e[0m' \
+  '14 BRIGHT cyan    \e[48;5;14m      \e[0m \e[38;5;14m1234567890;\e[0m' \
+  '15 BRIGHT white   \e[48;5;15m      \e[0m \e[38;5;15m1234567890;\e[0m'
+echo
+
+s=(blk red grn yel blu mag cyn wht BLK RED GRN YEL BLU MAG CYN WHT)
+n=(black red green yellow blue magenta cyan white
+   'bright black' 'bright red' 'bright green' 'bright yellow'
+   'bright blue' 'bright magenta' 'bright cyan' 'bright white')
+printf '%-14s' '  '
+for x in "${s[@]}"; do printf ' %s' "$x"; done
+printf '\n'
+for b in {0..15}; do
+    printf '%-14s' "${n[b]}"
+    for f in {0..15}; do
+        printf ' \e[38;5;%d;48;5;%dm%s\e[0m' "$f" "$b" "${s[f]}"
+    done
+    printf '\n'
+done
