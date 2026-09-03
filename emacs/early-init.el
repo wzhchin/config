@@ -9,8 +9,11 @@
         xterm-mouse-mode-called t))
 
 (menu-bar-mode -1)
-(tool-bar-mode -1)
-(scroll-bar-mode -1)
+;; These functions are not defined during terminal-only startup on Emacs 31.
+(when (fboundp 'tool-bar-mode)
+  (tool-bar-mode -1))
+(when (fboundp 'scroll-bar-mode)
+  (scroll-bar-mode -1))
 (add-to-list 'default-frame-alist '(font . "Sarasa Mono SC-12"))
 (add-to-list 'default-frame-alist '(internal-border-width . 12))
 
@@ -30,6 +33,9 @@
 ;; a library.  Set this in early-init so the main init file benefits too.
 (when (and (boundp 'load-path-filter-function)
            (fboundp 'load-path-filter-cache-directory-files))
+  ;; Load this dependency before installing the filter: the filter calls
+  ;; `regexp-opt', whose autoload would otherwise re-enter the filter.
+  (require 'regexp-opt)
   ;; `load' reads this function directly; `setopt' needlessly loads Custom
   ;; and its widget libraries during early init.
   (setq load-path-filter-function
