@@ -1,0 +1,771 @@
+#!/usr/bin/env python3
+"""amem — agent-mem. Decision log backed by sqlite + fts5.
+
+Config: $XDG_CONFIG_HOME/amem/config.yaml (default ~/.config/amem/config.yaml)
+DB path comes only from that file's `db` key.
+Soft-delete via delete_time. FTS rowid == theme.id.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import sqlite3
+import sys
+import textwrap
+from datetime import datetime
+from pathlib import Path
+
+PROG = "amem"
+RECORD_FIELDS = ("theme", "tags", "type", "note")
+REQUIRED_FIELDS = ("theme", "type", "note")
+APPEND_TYPES = ("fail", "success")
+NOTE_TYPES = ("fail", "success", "outdated")
+
+USAGE = """\
+amem — agent decision log.
+fail=do not repeat  success=follow this  outdated=stale
+TARGET = theme or note md5. delete is soft. type-set on a theme hits all live notes.
+
+append [-f FILE]
+  theme: sqlite-fts
+  tags: python,sqlite
+  type: fail
+  note: what happened
+
+search [KW] [-t TAG]... [--type fail|success|outdated] # at least one arg
+  - theme: sqlite-fts
+    tags: python,sqlite
+
+view THEME [--type fail|success|outdated]
+  theme: sqlite-fts
+  tags: python,sqlite
+  - note: what happened
+    time: yyyy-mm-dd hh:mm:ss
+    type: fail
+    id: <md5-of-note>
+
+type-set TARGET fail|success|outdated
+delete TARGET
+"""
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS theme (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    create_time TEXT NOT NULL,
+    update_time TEXT NOT NULL,
+    delete_time TEXT
+);
+
+CREATE TABLE IF NOT EXISTS tag (
+    id INTEGER PRIMARY KEY,
+    theme_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    create_time TEXT NOT NULL,
+    update_time TEXT NOT NULL,
+    delete_time TEXT
+);
+
+CREATE TABLE IF NOT EXISTS note (
+    id INTEGER PRIMARY KEY,
+    theme_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('fail', 'success', 'outdated')),
+    hash TEXT NOT NULL,
+    create_time TEXT NOT NULL,
+    update_time TEXT NOT NULL,
+    delete_time TEXT
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(
+    theme,
+    tags,
+    note,
+    tokenize = 'unicode61 remove_diacritics 2'
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS theme_name_live
+    ON theme(name) WHERE delete_time IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS tag_name_live
+    ON tag(theme_id, name) WHERE delete_time IS NULL;
+CREATE INDEX IF NOT EXISTS note_hash_live
+    ON note(hash) WHERE delete_time IS NULL;
+CREATE INDEX IF NOT EXISTS note_theme_id
+    ON note(theme_id);
+CREATE INDEX IF NOT EXISTS tag_theme_id
+    ON tag(theme_id);
+"""
+
+YAML_BOOL = {"true", "false", "null", "yes", "no", "on", "off"}
+
+
+def die(msg: str, code: int = 1) -> None:
+    print(f"{PROG}: {msg}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def now_str() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def note_hash(content: str) -> str:
+    return hashlib.md5(content.encode("utf-8")).hexdigest()
+
+
+def xdg_dir(env_name: str, fallback: Path) -> Path:
+    raw = os.environ.get(env_name)
+    if raw:
+        return Path(raw).expanduser()
+    return Path.home() / fallback
+
+
+def config_path() -> Path:
+    return xdg_dir("XDG_CONFIG_HOME", Path(".config")) / "amem" / "config.yaml"
+
+
+def default_db_path() -> Path:
+    return xdg_dir("XDG_DATA_HOME", Path(".local") / "share") / "amem" / "amem.sqlite"
+
+
+def default_config_text() -> str:
+    db = os.environ.get("XDG_DATA_HOME")
+    db_value = (
+        str(Path(db).expanduser() / "amem" / "amem.sqlite")
+        if db
+        else "~/.local/share/amem/amem.sqlite"
+    )
+    return f"# amem. fail=do not repeat; success=follow this; outdated=stale\ndb: {db_value}\n"
+
+
+def ensure_config() -> Path:
+    path = config_path()
+    if not path.is_file():
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(default_config_text(), encoding="utf-8")
+        except OSError as exc:
+            die(f"write {path}: {exc}")
+    return path
+
+
+def load_config() -> dict[str, str]:
+    path = ensure_config()
+    cfg = {"db": str(default_db_path())}
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        die(f"read {path}: {exc}")
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.lower().startswith("db:"):
+            value = stripped.split(":", 1)[1].strip().strip("'\"")
+            if value:
+                cfg["db"] = value
+    return cfg
+
+
+def db_path(cfg: dict[str, str]) -> Path:
+    value = (cfg.get("db") or "").strip()
+    if not value:
+        die("config: missing db")
+    return Path(value).expanduser()
+
+
+def connect(path: Path) -> sqlite3.Connection:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 5000")
+    conn.executescript(SCHEMA)
+    migrate_note_types(conn)
+    conn.commit()
+    return conn
+
+
+def migrate_note_types(conn: sqlite3.Connection) -> None:
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'note'"
+    ).fetchone()
+    if row is None or "outdated" in (row[0] or ""):
+        return
+    conn.executescript(
+        """
+        CREATE TABLE note_mig (
+            id INTEGER PRIMARY KEY,
+            theme_id INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            type TEXT NOT NULL CHECK(type IN ('fail', 'success', 'outdated')),
+            hash TEXT NOT NULL,
+            create_time TEXT NOT NULL,
+            update_time TEXT NOT NULL,
+            delete_time TEXT
+        );
+        INSERT INTO note_mig
+            SELECT id, theme_id, content, type, hash,
+                   create_time, update_time, delete_time
+            FROM note;
+        DROP TABLE note;
+        ALTER TABLE note_mig RENAME TO note;
+        CREATE INDEX IF NOT EXISTS note_hash_live
+            ON note(hash) WHERE delete_time IS NULL;
+        CREATE INDEX IF NOT EXISTS note_theme_id
+            ON note(theme_id);
+        """
+    )
+
+
+def split_tags(raw: str) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for part in re.split(r"[,，]", raw):
+        tag = part.strip()
+        if not tag or tag in seen:
+            continue
+        seen.add(tag)
+        out.append(tag)
+    return out
+
+
+def unquote(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
+def parse_record(text: str) -> dict[str, str]:
+    text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        raise ValueError("empty record")
+
+    data: dict[str, str] = {}
+    tag_items: list[str] = []
+    key: str | None = None
+    tags_is_list = False
+
+    for lineno, line in enumerate(text.split("\n"), 1):
+        if key != "note" and re.match(r"^\s*(#|$)", line):
+            continue
+
+        field = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:\s?(.*)$", line)
+        if field:
+            name = field.group(1).lower()
+            if name not in RECORD_FIELDS:
+                raise ValueError(f"line {lineno}: unknown field: {name}")
+            if name in data:
+                raise ValueError(f"line {lineno}: duplicate field: {name}")
+            key = name
+            data[key] = field.group(2)
+            continue
+
+        item = re.match(r"^\s*-\s+(.*)$", line)
+        if item and key == "tags":
+            tags_is_list = True
+            raw = unquote(item.group(1))
+            if raw:
+                tag_items.append(raw)
+            continue
+
+        if key is None:
+            raise ValueError(f"line {lineno}: unexpected line: {line}")
+        data[key] = data.get(key, "") + "\n" + line
+
+    note = data.get("note", "")
+    first, sep, rest = note.partition("\n")
+    if sep and first.strip() in {"|", "|-", "|+", ">", ">-", ">+"}:
+        note = textwrap.dedent(rest)
+    data["note"] = note.strip()
+    data["theme"] = unquote(data.get("theme", ""))
+    data["type"] = unquote(data.get("type", "")).lower()
+
+    inline_tags = unquote(data.get("tags", ""))
+    if tags_is_list and inline_tags:
+        raise ValueError("tags: use a comma list or a yaml list, not both")
+    if tags_is_list:
+        data["tags"] = ",".join(tag_items)
+    else:
+        data["tags"] = inline_tags
+
+    missing = [name for name in REQUIRED_FIELDS if not data.get(name)]
+    if missing:
+        raise ValueError("missing " + ", ".join(missing))
+    if data["type"] not in APPEND_TYPES:
+        raise ValueError(
+            "type must be fail (failed attempt) or success (correct path)"
+        )
+    extra = [name for name in data if name not in RECORD_FIELDS]
+    if extra:
+        raise ValueError("unknown field: " + ", ".join(extra))
+    return data
+
+
+def read_append_text(path: str | None) -> tuple[str, str]:
+    if path:
+        file_path = Path(path).expanduser()
+        if not file_path.is_file():
+            die(f"not a file: {path}")
+        try:
+            return file_path.read_text(encoding="utf-8"), str(file_path)
+        except OSError as exc:
+            die(f"read {path}: {exc}")
+    return sys.stdin.read(), "-"
+
+
+def yaml_scalar(value: str) -> str:
+    if value == "":
+        return '""'
+    if (
+        "\n" in value
+        or value != value.strip()
+        or value.lower() in YAML_BOOL
+        or re.fullmatch(r"[-+]?\d+(\.\d+)?", value)
+        or re.search(r"[:#{}[\]]", value)
+        or value[:1] in "-?&*!|>%@`\"'"
+    ):
+        return json.dumps(value, ensure_ascii=False)
+    return value
+
+
+def emit_note_field(content: str) -> list[str]:
+    if "\n" in content or content.startswith((" ", "\t")):
+        lines = ["- note: |-"]
+        lines.extend("    " + line for line in content.split("\n"))
+        return lines
+    return [f"- note: {yaml_scalar(content)}"]
+
+
+def live_tags(conn: sqlite3.Connection, theme_id: int) -> list[str]:
+    rows = conn.execute(
+        "SELECT name FROM tag WHERE theme_id = ? AND delete_time IS NULL ORDER BY id",
+        (theme_id,),
+    )
+    return [row["name"] for row in rows]
+
+
+def sync_fts(conn: sqlite3.Connection, theme_id: int) -> None:
+    conn.execute("DELETE FROM fts WHERE rowid = ?", (theme_id,))
+    row = conn.execute(
+        "SELECT name, delete_time FROM theme WHERE id = ?", (theme_id,)
+    ).fetchone()
+    if row is None or row["delete_time"] is not None:
+        return
+    tags = live_tags(conn, theme_id)
+    notes = [
+        r["content"]
+        for r in conn.execute(
+            "SELECT content FROM note "
+            "WHERE theme_id = ? AND delete_time IS NULL ORDER BY id",
+            (theme_id,),
+        )
+    ]
+    conn.execute(
+        "INSERT INTO fts(rowid, theme, tags, note) VALUES (?, ?, ?, ?)",
+        (theme_id, row["name"], " ".join(tags), "\n".join(notes)),
+    )
+
+
+def fts_match_query(keyword: str) -> str | None:
+    parts: list[str] = []
+    for raw in keyword.split():
+        token = raw.replace('"', "")
+        if not token:
+            continue
+        if token.isascii():
+            safe = re.sub(r"[^\w]", "", token)
+            if not safe:
+                continue
+            parts.append(f'"{safe}"*')
+        else:
+            parts.append(f'"{token}"')
+    if not parts:
+        return None
+    return " AND ".join(parts)
+
+
+def like_contains(keyword: str) -> str:
+    escaped = keyword.replace("#", "##").replace("%", "#%").replace("_", "#_")
+    return f"%{escaped}%"
+
+
+def cmd_append(conn: sqlite3.Connection, raw: str, source: str = "-") -> int:
+    try:
+        rec = parse_record(raw)
+    except ValueError as exc:
+        if source == "-":
+            die(str(exc))
+        die(f"{source}: {exc}")
+    ts = now_str()
+    tags = split_tags(rec["tags"])
+    digest = note_hash(rec["note"])
+
+    row = conn.execute(
+        "SELECT id FROM theme WHERE name = ? AND delete_time IS NULL",
+        (rec["theme"],),
+    ).fetchone()
+    if row:
+        theme_id = int(row["id"])
+        conn.execute(
+            "UPDATE theme SET update_time = ? WHERE id = ?", (ts, theme_id)
+        )
+    else:
+        cur = conn.execute(
+            "INSERT INTO theme(name, create_time, update_time) VALUES (?, ?, ?)",
+            (rec["theme"], ts, ts),
+        )
+        theme_id = int(cur.lastrowid)
+
+    for tag in tags:
+        live = conn.execute(
+            "SELECT id FROM tag "
+            "WHERE theme_id = ? AND name = ? AND delete_time IS NULL",
+            (theme_id, tag),
+        ).fetchone()
+        if live:
+            continue
+        conn.execute(
+            "INSERT INTO tag(theme_id, name, create_time, update_time) "
+            "VALUES (?, ?, ?, ?)",
+            (theme_id, tag, ts, ts),
+        )
+
+    conn.execute(
+        "INSERT INTO note(theme_id, content, type, hash, create_time, update_time) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (theme_id, rec["note"], rec["type"], digest, ts, ts),
+    )
+    sync_fts(conn, theme_id)
+    conn.commit()
+    return 0
+
+
+def matching_theme_ids(
+    conn: sqlite3.Connection,
+    keyword: str,
+    tags: list[str],
+    note_type: str | None = None,
+) -> list[int]:
+    sql = ["SELECT t.id FROM theme t WHERE t.delete_time IS NULL"]
+    args: list[object] = []
+
+    for tag in tags:
+        sql.append(
+            "AND t.id IN ("
+            "SELECT theme_id FROM tag "
+            "WHERE delete_time IS NULL AND name = ?"
+            ")"
+        )
+        args.append(tag)
+
+    if note_type:
+        sql.append(
+            "AND t.id IN ("
+            "SELECT theme_id FROM note "
+            "WHERE delete_time IS NULL AND type = ?"
+            ")"
+        )
+        args.append(note_type)
+
+    keyword = keyword.strip()
+    if keyword:
+        like = like_contains(keyword)
+        clauses = [
+            "t.name LIKE ? ESCAPE '#'",
+            "EXISTS ("
+            "SELECT 1 FROM tag g "
+            "WHERE g.theme_id = t.id AND g.delete_time IS NULL "
+            "AND g.name LIKE ? ESCAPE '#'"
+            ")",
+        ]
+        args.extend([like, like])
+        note_sql = (
+            "EXISTS ("
+            "SELECT 1 FROM note n "
+            "WHERE n.theme_id = t.id AND n.delete_time IS NULL "
+            "AND n.content LIKE ? ESCAPE '#'"
+        )
+        args.append(like)
+        if note_type:
+            note_sql += " AND n.type = ?"
+            args.append(note_type)
+        note_sql += ")"
+        clauses.append(note_sql)
+        # FTS concatenates fail and success notes; skip it when --type is set.
+        fts_q = None if note_type else fts_match_query(keyword)
+        if fts_q is not None:
+            try:
+                hits = [
+                    r[0]
+                    for r in conn.execute(
+                        "SELECT rowid FROM fts WHERE fts MATCH ?", (fts_q,)
+                    )
+                ]
+            except sqlite3.OperationalError:
+                hits = []
+            if hits:
+                placeholders = ",".join("?" * len(hits))
+                clauses.append(f"t.id IN ({placeholders})")
+                args.extend(hits)
+        sql.append("AND (" + " OR ".join(clauses) + ")")
+
+    sql.append("ORDER BY t.update_time DESC, t.id DESC")
+    return [int(r["id"]) for r in conn.execute(" ".join(sql), args)]
+
+
+def cmd_search(
+    conn: sqlite3.Connection,
+    keyword: str,
+    tags: list[str],
+    note_type: str | None = None,
+) -> int:
+    if keyword or tags or note_type:
+        pass
+    else:
+        print(USAGE)
+        exit(1)
+    ids = matching_theme_ids(conn, keyword, tags, note_type)
+    if not ids:
+        print("[]")
+        return 0
+    lines: list[str] = []
+    for theme_id in ids:
+        row = conn.execute(
+            "SELECT name FROM theme WHERE id = ?", (theme_id,)
+        ).fetchone()
+        tag_names = live_tags(conn, theme_id)
+        lines.append(f"- theme: {yaml_scalar(row['name'])}")
+        if tag_names:
+            lines.append(f"  tags: {yaml_scalar(','.join(tag_names))}")
+    print("\n".join(lines))
+    return 0
+
+
+def cmd_view(
+    conn: sqlite3.Connection, theme_name: str, note_type: str | None = None
+) -> int:
+    row = conn.execute(
+        "SELECT id, name FROM theme WHERE name = ? AND delete_time IS NULL",
+        (theme_name,),
+    ).fetchone()
+    if row is None:
+        die(f"theme not found: {theme_name}")
+    theme_id = int(row["id"])
+    tag_names = live_tags(conn, theme_id)
+    sql = (
+        "SELECT content, type, hash, create_time FROM note "
+        "WHERE theme_id = ? AND delete_time IS NULL"
+    )
+    args: list[object] = [theme_id]
+    if note_type:
+        sql += " AND type = ?"
+        args.append(note_type)
+    sql += " ORDER BY id"
+    notes = conn.execute(sql, args).fetchall()
+
+    out = [f"theme: {yaml_scalar(row['name'])}"]
+    if tag_names:
+        out.append(f"tags: {yaml_scalar(','.join(tag_names))}")
+    else:
+        out.append("tags:")
+    for note in notes:
+        out.extend(emit_note_field(note["content"]))
+        out.append(f"  time: {note['create_time']}")
+        out.append(f"  type: {note['type']}")
+        out.append(f"  id: {note['hash']}")
+    print("\n".join(out))
+    return 0
+
+
+def soft_delete_theme(conn: sqlite3.Connection, theme_id: int, ts: str) -> None:
+    conn.execute(
+        "UPDATE theme SET delete_time = ?, update_time = ? "
+        "WHERE id = ? AND delete_time IS NULL",
+        (ts, ts, theme_id),
+    )
+    conn.execute(
+        "UPDATE tag SET delete_time = ?, update_time = ? "
+        "WHERE theme_id = ? AND delete_time IS NULL",
+        (ts, ts, theme_id),
+    )
+    conn.execute(
+        "UPDATE note SET delete_time = ?, update_time = ? "
+        "WHERE theme_id = ? AND delete_time IS NULL",
+        (ts, ts, theme_id),
+    )
+    conn.execute("DELETE FROM fts WHERE rowid = ?", (theme_id,))
+
+
+def cmd_delete(conn: sqlite3.Connection, target: str) -> int:
+    ts = now_str()
+    theme = conn.execute(
+        "SELECT id FROM theme WHERE name = ? AND delete_time IS NULL",
+        (target,),
+    ).fetchone()
+    if theme is not None:
+        soft_delete_theme(conn, int(theme["id"]), ts)
+        conn.commit()
+        return 0
+
+    notes = conn.execute(
+        "SELECT id, theme_id FROM note WHERE hash = ? AND delete_time IS NULL",
+        (target,),
+    ).fetchall()
+    if not notes:
+        die(f"not found: {target}")
+    theme_ids: set[int] = set()
+    for note in notes:
+        conn.execute(
+            "UPDATE note SET delete_time = ?, update_time = ? "
+            "WHERE id = ? AND delete_time IS NULL",
+            (ts, ts, note["id"]),
+        )
+        theme_ids.add(int(note["theme_id"]))
+    for theme_id in theme_ids:
+        conn.execute(
+            "UPDATE theme SET update_time = ? WHERE id = ?", (ts, theme_id)
+        )
+        sync_fts(conn, theme_id)
+    conn.commit()
+    return 0
+
+
+def cmd_type_set(conn: sqlite3.Connection, target: str, new_type: str) -> int:
+    ts = now_str()
+    theme = conn.execute(
+        "SELECT id FROM theme WHERE name = ? AND delete_time IS NULL",
+        (target,),
+    ).fetchone()
+    if theme is not None:
+        theme_id = int(theme["id"])
+        count = conn.execute(
+            "SELECT COUNT(*) FROM note "
+            "WHERE theme_id = ? AND delete_time IS NULL",
+            (theme_id,),
+        ).fetchone()[0]
+        if not count:
+            die(f"no live notes in theme: {target}")
+        conn.execute(
+            "UPDATE note SET type = ?, update_time = ? "
+            "WHERE theme_id = ? AND delete_time IS NULL",
+            (new_type, ts, theme_id),
+        )
+        conn.execute(
+            "UPDATE theme SET update_time = ? WHERE id = ?", (ts, theme_id)
+        )
+        conn.commit()
+        return 0
+
+    notes = conn.execute(
+        "SELECT id, theme_id FROM note WHERE hash = ? AND delete_time IS NULL",
+        (target,),
+    ).fetchall()
+    if not notes:
+        die(f"not found: {target}")
+    theme_ids: set[int] = set()
+    for note in notes:
+        conn.execute(
+            "UPDATE note SET type = ?, update_time = ? "
+            "WHERE id = ? AND delete_time IS NULL",
+            (new_type, ts, note["id"]),
+        )
+        theme_ids.add(int(note["theme_id"]))
+    for theme_id in theme_ids:
+        conn.execute(
+            "UPDATE theme SET update_time = ? WHERE id = ?", (ts, theme_id)
+        )
+    conn.commit()
+    return 0
+
+
+def add_type_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--type",
+        choices=NOTE_TYPES,
+        default=None,
+        help="fail=failed attempt; success=correct path; outdated=no longer valid",
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=PROG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Agent decision memory. Run `amem help` for usage.",
+    )
+    sub = parser.add_subparsers(dest="cmd", required=False)
+
+    append = sub.add_parser("append", help="read a record from stdin or -f")
+    append.add_argument(
+        "-f",
+        dest="file",
+        default=None,
+        metavar="PATH",
+        help="yaml file; validates theme/type/note (tags optional)",
+    )
+
+    search = sub.add_parser("search", help="search themes by keyword and tags")
+    search.add_argument("keyword", nargs="?", default="")
+    search.add_argument(
+        "-t",
+        dest="tags",
+        action="append",
+        default=[],
+        metavar="TAG",
+        help="theme must have this tag; repeat for AND",
+    )
+    add_type_option(search)
+
+    view = sub.add_parser("view", help="show a theme and its notes")
+    view.add_argument("theme")
+    add_type_option(view)
+
+    type_set = sub.add_parser(
+        "type-set", help="set fail/success/outdated on a theme or note id"
+    )
+    type_set.add_argument("target", help="theme name or note md5")
+    type_set.add_argument(
+        "new_type",
+        metavar="type",
+        choices=NOTE_TYPES,
+        help="fail, success, or outdated",
+    )
+
+    delete = sub.add_parser("delete", help="soft-delete a theme name or note id")
+    delete.add_argument("target", help="theme name or md5 of a note")
+    sub.add_parser("help", help="show usage")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    ensure_config()
+    if args.cmd in (None, "help"):
+        print(USAGE, end="")
+        return 0
+    conn = connect(db_path(load_config()))
+    try:
+        if args.cmd == "append":
+            raw, source = read_append_text(args.file)
+            return cmd_append(conn, raw, source)
+        if args.cmd == "search":
+            return cmd_search(conn, args.keyword, args.tags, args.type)
+        if args.cmd == "view":
+            return cmd_view(conn, args.theme, args.type)
+        if args.cmd == "type-set":
+            return cmd_type_set(conn, args.target, args.new_type)
+        if args.cmd == "delete":
+            return cmd_delete(conn, args.target)
+        die(f"unknown command: {args.cmd}")
+    finally:
+        conn.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
