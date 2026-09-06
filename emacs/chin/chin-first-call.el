@@ -41,12 +41,138 @@
   (keymap-set markdown-ts-mode-map "C-c C-t"
               #'chin/markdown-cycle-heading-todo))
 
-(declare-function evil-collection-init "evil-collection")
+(declare-function evil-define-key* "evil")
+(declare-function evil-local-set-key "evil")
+(declare-function evil-normalize-keymaps "evil")
+(declare-function evil-set-initial-state "evil")
+
+(defun chin/dired-bind-open ()
+  "Bind Enter to `dired-find-file' in this Dired buffer.
+`evil-ret' is a motion and otherwise moves to the next line."
+  (when (and (derived-mode-p 'dired-mode)
+             (bound-and-true-p evil-local-mode))
+    (dolist (state '(normal motion visual))
+      (dolist (key (list (kbd "RET") (kbd "<return>") (kbd "C-m")
+                         (kbd "<kp-enter>")))
+        (evil-local-set-key state key #'dired-find-file))
+      (evil-local-set-key state [remap evil-ret] #'dired-find-file))
+    (evil-normalize-keymaps)))
+
+(defun chin/evil-setup-dired ()
+  "Install Evil normal-state bindings for Dired.
+Leave unbound keys to Evil (so `w'/`l'/`G' stay motions).  Reuse Dired's
+own `%', `*', and `:' prefix maps instead of copying their commands."
+  (evil-set-initial-state 'dired-mode 'normal)
+  (let ((regexp-map (lookup-key dired-mode-map "%"))
+        (mark-map (lookup-key dired-mode-map "*"))
+        (epa-map (lookup-key dired-mode-map ":")))
+    (evil-define-key* 'normal dired-mode-map
+      "j" #'dired-next-line
+      "k" #'dired-previous-line
+      "<" #'dired-prev-dirline
+      ">" #'dired-next-dirline
+      "gj" #'dired-next-dirline
+      "gk" #'dired-prev-dirline
+      (kbd "]]") #'dired-next-dirline
+      (kbd "[[") #'dired-prev-dirline
+      "^" #'dired-up-directory
+      "-" #'dired-up-directory
+      [remap evil-ret] #'dired-find-file
+      (kbd "RET") #'dired-find-file
+      (kbd "<return>") #'dired-find-file
+      (kbd "C-m") #'dired-find-file
+      (kbd "<kp-enter>") #'dired-find-file
+      (kbd "S-RET") #'dired-find-file-other-window
+      (kbd "S-<return>") #'dired-find-file-other-window
+      "go" #'dired-find-file-other-window
+      (kbd "M-RET") #'dired-view-file
+      (kbd "M-<return>") #'dired-view-file
+      "gO" #'dired-view-file
+      "gf" #'dired-find-file
+      "a" #'dired-find-alternate-file
+      "gx" #'browse-url-of-dired-file
+      "m" #'dired-mark
+      "u" #'dired-unmark
+      "U" #'dired-unmark-all-marks
+      "t" #'dired-toggle-marks
+      "d" #'dired-flag-file-deletion
+      "x" #'dired-do-flagged-delete
+      "D" #'dired-do-delete
+      "~" #'dired-flag-backup-files
+      (kbd "<delete>") #'dired-unmark-backward
+      "C" #'dired-do-copy
+      "R" #'dired-do-rename
+      "H" #'dired-do-hardlink
+      "S" #'dired-do-symlink
+      "M" #'dired-do-chmod
+      "O" #'dired-do-chown
+      "T" #'dired-do-touch
+      "P" #'dired-do-print
+      "B" #'dired-do-byte-compile
+      "L" #'dired-do-load
+      "Z" #'dired-do-compress
+      "c" #'dired-do-compress-to
+      "!" #'dired-do-shell-command
+      "X" #'dired-do-shell-command
+      "&" #'dired-do-async-shell-command
+      "A" #'dired-do-find-regexp
+      "Q" #'dired-do-find-regexp-and-replace
+      "=" #'dired-diff
+      "+" #'dired-create-directory
+      "#" #'dired-flag-auto-save-files
+      "." #'dired-clean-directory
+      "E" #'dired-do-open
+      "i" #'dired-toggle-read-only
+      "I" #'dired-maybe-insert-subdir
+      "r" #'dired-do-redisplay
+      "o" #'dired-sort-toggle-or-edit
+      "Y" #'dired-copy-filename-as-kill
+      "gy" #'dired-show-file-type
+      "gG" #'dired-do-chgrp
+      "g$" #'dired-hide-subdir
+      "g?" #'dired-summary
+      "gr" #'revert-buffer
+      "J" #'dired-goto-file
+      "q" #'quit-window
+      "(" #'dired-hide-details-mode
+      "s" #'dired-do-kill-lines
+      [remap undo] #'dired-undo
+      [remap advertised-undo] #'dired-undo)
+    (when (keymapp regexp-map)
+      (evil-define-key* 'normal dired-mode-map "%" regexp-map))
+    (when (keymapp mark-map)
+      (evil-define-key* 'normal dired-mode-map "*" mark-map))
+    ;; Native Dired puts EPA on `:'; Evil owns `:' as Ex.  `;` is the
+    ;; replacement prefix, matching the previous Collection binding.
+    (when (keymapp epa-map)
+      (evil-define-key* 'normal dired-mode-map ";" epa-map))
+    (evil-define-key* 'motion dired-mode-map
+      [remap evil-ret] #'dired-find-file
+      (kbd "RET") #'dired-find-file
+      (kbd "<return>") #'dired-find-file
+      (kbd "C-m") #'dired-find-file
+      (kbd "<kp-enter>") #'dired-find-file))
+  ;; `emacs .` visits Dired during startup, before this file loads, so
+  ;; `dired-mode-hook' has already run.  Rebind those live buffers.
+  (dolist (buf (buffer-list))
+    (with-current-buffer buf
+      (chin/dired-bind-open))))
+
+(defun chin/evil-setup-wdired ()
+  "Start Wdired in normal state; ZZ saves, ZQ aborts, Escape exits."
+  (evil-set-initial-state 'wdired-mode 'normal)
+  (define-key wdired-mode-map [remap evil-write] #'wdired-finish-edit)
+  (evil-define-key* 'normal wdired-mode-map
+    (kbd "<escape>") #'wdired-exit
+    "ZZ" #'wdired-finish-edit
+    "ZQ" #'wdired-abort-changes))
+
 (with-eval-after-load 'dired
-  ;; Load Evil Collection only for file-management modes.  This keeps the
-  ;; broader configuration minimal while retaining Dired's complete Evil UI.
-  (require 'evil-collection)
-  (evil-collection-init '(dired wdired)))
+  (chin/evil-setup-dired)
+  (add-hook 'dired-mode-hook #'chin/dired-bind-open t)
+  (add-hook 'evil-local-mode-hook #'chin/dired-bind-open))
+(with-eval-after-load 'wdired
+  (chin/evil-setup-wdired))
 
 (require 'vertico)
 (vertico-mode 1)

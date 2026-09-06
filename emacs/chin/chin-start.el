@@ -36,6 +36,8 @@ Keep the selected faces transparent on TTY frames."
 
 (setq evil-respect-visual-line-mode t
       evil-want-abbrev-expand-on-insert-exit t
+      ;; Keep Evil from loading evil-keybindings.el.  Dired and Wdired
+      ;; bindings are installed locally after those libraries load.
       evil-want-keybinding nil
       evil-undo-system 'undo-redo
       evil-disable-insert-state-bindings t)

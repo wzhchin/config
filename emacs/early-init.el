@@ -27,7 +27,8 @@
 (setq read-process-output-max (* 1024 1024))
 
 (setq package-enable-at-startup nil
-      package-quickstart nil)
+      package-quickstart nil
+      frame-inhibit-implied-resize t)
 
 ;; Emacs 31 can filter `load-path' before trying each directory while loading
 ;; a library.  Set this in early-init so the main init file benefits too.
