@@ -247,14 +247,19 @@ prompt_chin_precmd() {
 
     unset PROMPT_CHIN_LAST_TIME
 
-    local histsignal
-    [ -z "$HISTFILE" ] && histsignal+="H- "
+    PROMPT_CHIN_HEAD="%(?..%F{red}[%?]%f )${}%(1j.%F{cyan}(%j)%f .)%B%F{yellow}%n%f%b@%B%F{blue}%m%f%b %B%F{green}%~%f%b${cost_time}"
 
-    PROMPT_CHIN_HEAD="%(?..%F{red}[%?]%f )${}${histsignal}%(1j.%F{cyan}(%j)%f .)%B%F{yellow}%n%f%b@%B%F{blue}%m%f%b %B%F{green}%~%f%b${cost_time}"
-
+    ###############
+    # CUSTOM STATUS START
+    ###############
     local -a environment_status
-    [[ -n "${VIRTUAL_ENV}" ]] && environment_status+="%F{cyan}(${VIRTUAL_ENV:t})%f"
+    [[ -n "$SHPOOL_SESSION_NAME" ]] && environment_status+="%F{red}SP:$SHPOOL_SESSION_NAME%f"
+    [ -z "$HISTFILE" ] && environment_status+="HIST-"
+    [[ -n "${VIRTUAL_ENV}" ]] && environment_status+="%F{cyan}PY:${VIRTUAL_ENV:t}%f"
     [[ -n "$HTTP_PROXY" ]] && environment_status+="%F{yellow}HPX%f"
+    ###############
+    # CUSTOM STATUS END 
+    ###############
 
     local environment_line=""
     (( $#environment_status )) && environment_line="${prompt_newline}${(j: :)environment_status}"
