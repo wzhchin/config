@@ -4,6 +4,9 @@
 (setq custom-file (expand-file-name "custom.el" user-emacs-directory))
 (load custom-file 'noerror 'nomessage)
 
+;;; File persistence
+(setq make-backup-files nil)
+
 ;;; Packages
 (defvar package-archives)
 (setq package-archives
