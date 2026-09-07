@@ -33,6 +33,7 @@ unset ANDROID_SDK_ROOT
 export PATH="$HOME/.local/bin:$PATH"
 
 ## Fzf Utils
+export FZF_DEFAULT_OPTS='--walker-skip .git,node_modules,target'
 j() {
     local folder option
     option="$(tac "${DIR_HISTORY_FILE}" | awk 'arr[$0]++ == 0' | grep -vxF "$PWD" | fzf -q "$1" --reverse --height 40% | sed -r 's/\r?\n?$//g')"
@@ -77,10 +78,23 @@ jl() {
     unset folder option
 }
 
+tddr() {
+    if [ -z "$CHIN_DAILY_DIR" ]; then
+        echo "Set CHIN_DAILY_DIR"
+        return 1
+    fi
+    local _d="$(ls $CHIN_DAILY_DIR | fzf -q "$1" --header='Ctrl-j: use input' --bind 'ctrl-j:become(printf "%s\n" {q})' --bind 'enter:accept-or-print-query' | sed "s/__date__/$(date +%y%m-%d)/g")"
+    local _dd="$CHIN_DAILY_DIR/$_d"
+    if ! [ -d "$_dd" ]; then
+        if ! echo "$_d" | grep -i -E '[0-9]{2}[01][0-9]-[0-3][0-9]'; then
+	    _dd="$CHIN_DAILY_DIR/$(date +%y%m-%d)-$_d"
+        fi
+        mkdir -p "$_dd"
+    fi
+    cd "$_dd"
+}
 
 [ -f /usr/share/fzf/key-bindings.zsh ] && . /usr/share/fzf/key-bindings.zsh
-
-
 
 ########################################
 ### Alias Settings
@@ -98,7 +112,7 @@ alias less="less -R"
 alias ap="realpath -s"
 alias rmi="trash"
 
-mkpp() {
+mkpar() {
     local -a args
     while [ "$#" -gt 0 ]; do
         case "$1" in
@@ -109,6 +123,18 @@ mkpp() {
     done
     mkdir -p "${args[@]}"
 
+}
+
+cdpar() {
+    local -a args
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -*) args=("${args[@]}" "$1") ;;
+            *) args=("${args[@]}" "${1%/*}") ;;
+        esac
+        shift
+    done
+    cd "${args[@]}"
 }
 
 hpx() {
@@ -122,22 +148,6 @@ hpx() {
     export HTTPS_PROXY="$HTTP_PROXY"
 }
 
-tddr() {
-    if [ -z "$CHIN_DAILY_DIR" ]; then
-        echo "Set CHIN_DAILY_DIR"
-        return 1
-    fi
-    if [ "$1" = fzf ]; then
-        local _d="$CHIN_DAILY_DIR/$(ls $CHIN_DAILY_DIR | fzf)"
-    else
-        local _d="$CHIN_DAILY_DIR/$(date +%y%m-%d)"
-    fi
-    if [ -n "$1" ]; then
-        _d="$_d-$1"
-    fi
-    mkdir -p "$_d"
-    cd "$_d"
-}
 
 check-path() {
     echo "$PATH" | sed -z 's/:/\n/g' | awk '{arr[$0]++; print arr[$0], $0}'
