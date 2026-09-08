@@ -67,6 +67,7 @@ Keep the selected faces transparent on TTY frames."
 (defvar-keymap chin/evil-find-map
   :doc "Leader bindings for finding files and text."
   "b" #'consult-buffer
+  "i" #'consult-imenu
   "f" #'find-file
   "g" #'consult-ripgrep
   "l" #'consult-line)

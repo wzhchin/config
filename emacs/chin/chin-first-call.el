@@ -174,6 +174,10 @@ own `%', `*', and `:' prefix maps instead of copying their commands."
 (with-eval-after-load 'wdired
   (chin/evil-setup-wdired))
 
+(setq completion-styles '(substring partial-completion basic)
+      completion-ignore-case t
+      read-buffer-completion-ignore-case t
+      read-file-name-completion-ignore-case t)
 (require 'vertico)
 (vertico-mode 1)
 
@@ -273,6 +277,7 @@ With INSERT-BLANK-P non-nil, do not insert a replacement space."
 (declare-function consult-line "consult")
 (declare-function consult-ripgrep "consult")
 (declare-function consult-xref "consult-xref")
+(declare-function consult-imenu "consult-imenu")
 (declare-function eglot-ensure "eglot")
 (defvar xref--xref-buffer-mode-map)
 (defvar xref-show-xrefs-function)
@@ -348,6 +353,7 @@ With INSERT-BLANK-P non-nil, do not insert a replacement space."
 (autoload #'consult-line "consult" nil t)
 (autoload #'consult-ripgrep "consult" nil t)
 (autoload #'consult-xref "consult-xref" nil t)
+(autoload #'consult-imenu "consult-imenu" nil t)
 (setq xref-show-xrefs-function #'consult-xref)
 (global-set-key (kbd "M-3") #'consult-ripgrep)
 (global-set-key (kbd "M-4") #'consult-buffer)
