@@ -104,10 +104,9 @@ setopt COMPLETE_ALIASES
 
 ## COMMAND HISTORY
 HISTFILE="$CHIN_ZSH_CACHE_DIR/cmd-hist"
-# Modify this to make startup faster
-HISTSIZE=5000
-SAVEHIST=500000
-HISTDUP=erase               #Erase duplicates in the history file
+# Keep HISTSIZE larger than SAVEHIST so duplicate-first expiry has room to work.
+HISTSIZE=120000
+SAVEHIST=100000
 
 setopt EXTENDED_HISTORY
 setopt HIST_EXPIRE_DUPS_FIRST
@@ -115,9 +114,7 @@ setopt HIST_IGNORE_DUPS
 setopt HIST_IGNORE_SPACE
 setopt HIST_SAVE_NO_DUPS
 setopt HIST_VERIFY
-setopt APPENDHISTORY     #Append history to the history file (no overwriting)
-setopt SHAREHISTORY      #Share history across terminals
-setopt INCAPPENDHISTORY  #Immediately append to the history file, not just when a term is killed
+setopt SHAREHISTORY      #Share and incrementally append history across terminals
 
 
 autoload -Uz up-line-or-beginning-search down-line-or-beginning-search

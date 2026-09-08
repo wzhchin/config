@@ -48,17 +48,25 @@ j() {
         printf "Open its parent dir: \n\t%s\033[31m/%s\033[0m\n" "${option%/*}" "${option##*/}"
         folder="${option%/*}"
     else
-        printf "$option is not existed.\n"
+        printf '%s does not exist.\n' "$option"
         return
     fi
 
-    cd "$folder"
+    builtin cd -- "$folder"
     unset folder option
 }
 
 jl() {
     local folder option
-    option="$(ls -at | fzf -q "$1" --reverse --height 40% | sed -r 's/\r?\n?$//g')"
+    local -a entries
+    entries=(./*(DNom))
+
+    (( $#entries )) || return 0
+
+    IFS= read -r -d $'\0' option < <(
+        printf '%s\0' "${entries[@]}" |
+            fzf --read0 --print0 -q "${1:-}" --reverse --height 40%
+    ) || return 0
 
     if [[ -z "$option" ]]; then
         return 0
@@ -70,11 +78,11 @@ jl() {
         printf "Open its parent dir: \n\t%s\033[31m/%s\033[0m\n" "${option%/*}" "${option##*/}"
         folder="${option%/*}"
     else
-        printf "$option is not existed.\n"
+        printf '%s does not exist.\n' "$option"
         return
     fi
 
-    cd "$folder"
+    builtin cd -- "$folder"
     unset folder option
 }
 
@@ -138,14 +146,21 @@ cdpar() {
 }
 
 hpx() {
-    if [ -z "$HTTP_PROXY" ]; then
+    if [[ -z "${HTTP_PROXY:-}${HTTPS_PROXY:-}${http_proxy:-}${https_proxy:-}" ]]; then
+        if [[ -z "${CHIN_HTTP_PROXY:-}" ]]; then
+            printf 'CHIN_HTTP_PROXY is not set.\n' >&2
+            return 1
+        fi
+
         export HTTP_PROXY="$CHIN_HTTP_PROXY"
-        echo "set proxy to $HTTP_PROXY"
+        export HTTPS_PROXY="$CHIN_HTTP_PROXY"
+        export http_proxy="$CHIN_HTTP_PROXY"
+        export https_proxy="$CHIN_HTTP_PROXY"
+        printf 'set proxy to %s\n' "$CHIN_HTTP_PROXY"
     else
-        export HTTP_PROXY=
-        echo "unset proxy"
+        unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
+        printf 'unset proxy\n'
     fi
-    export HTTPS_PROXY="$HTTP_PROXY"
 }
 
 
