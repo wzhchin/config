@@ -39,3 +39,7 @@
 - Focus on complex problems and proven fixes, important failed approaches, environment constraints, decision rationale, and stable user preferences.
 - Keep only necessary context, findings, evidence, and conditions for reuse. Exclude activity logs, secrets, unverified conclusions, and duplicate content.
 - If recording fails, continue the main task.
+
+# Tool 
+
+- Use `rtk <origin-cmd>` to save tokens default. 
