@@ -1,51 +1,72 @@
 ---
 name: light-spec
-description: Run a lightweight specification-to-TDD workflow with an approval gate, temporary change specs, observable requirements, user stories, Given-When-Then scenarios, vertical RED-GREEN-REFACTOR slices, fresh verification, and semantic merge into canonical specs. Use only when the user explicitly asks to use the `light-spec` skill. 
+description: Carry an approved change through test-first implementation or behavior-preserving refactors and fresh verification. Maintain current specs, active and completed changes, and reusable lessons under docs/. Use when explicitly requested or when the user is starting a new project or building an application from scratch. Recommended for defining the initial scope and acceptance criteria before implementation.
 ---
 
 # Light Spec
 
-Turn one approved behavior change into tested code and current specifications.
+Turn one approved change into verified code and current specifications.
 
-Keep `specs/` as the source of truth for verified current behavior.
+## Keep project documents under docs
 
-Keep the active change in `changes/<change-slug>/spec.md`.
+Use this layout relative to the project root, creating files and directories only when needed:
 
-Do not create an archive.
+```text
+docs/
+├── constitution.md
+├── changes/
+│   ├── now/<change-slug>/spec.md
+│   └── ended/<change-slug>/spec.md
+├── specs/
+│   ├── <slug>.md
+│   └── <big-slug>/<slug>.md
+└── lessons-learned/
+    └── <topic-slug>.md
+```
+
+Keep `docs/specs/` as the source of truth for verified current behavior. Use a single `docs/specs/<slug>.md` for a small, self-contained topic. Group related topics under `docs/specs/<big-slug>/<slug>.md` when they belong to a larger capability; do not create a directory for every small spec.
+
+A spec key is its path relative to `docs/specs/` without `.md`: `login` or `accounts/login`. Use the full key in requirement and scenario references to distinguish topics with the same leaf name. Keep existing spec locations unless the approved change requires reorganizing them.
+
+Keep active proposals and evidence in `docs/changes/now/<change-slug>/spec.md`. After verification and merge review, move the entire change directory to `docs/changes/ended/<change-slug>/`, preserving its contents. Ended changes describe past work; current behavior belongs in `docs/specs/`.
+
+Keep reusable failed attempts and instructive successes in topic files under `docs/lessons-learned/`. The optional `docs/constitution.md` contains only project-specific constraints.
 
 ## Preserve the approval gate
 
 Inspect the target repository and its local instructions before proposing files.
 
-Read `constitution.md` when it exists.
+Read `docs/constitution.md` when it exists and honor its applicable project constraints. Follow the governing instruction hierarchy if it conflicts with this skill; do not silently rewrite it.
 
-Read every affected `specs/<capability>/spec.md` when it exists.
+Read every affected file under `docs/specs/` and relevant topic files under `docs/lessons-learned/` when they exist. Use earlier lessons to avoid repeating failed approaches under the same conditions.
 
-If `constitution.md` does not exist, adapt [assets/constitution.md](assets/constitution.md) to the project and include it in the proposal.
+This skill owns the general workflow. Use [assets/constitution.md](assets/constitution.md) only when a missing constitution would capture project-specific constraints worth retaining. Include those constraints in the proposal; do not copy this workflow into the project or create an empty constitution.
 
-Discuss the goal, non-goals, user value, affected capability, boundaries, and public behavior with the user.
+Establish the goal, non-goals, user value, affected capabilities, boundaries, and public behavior from the request and existing context. Ask only about missing information that affects the result.
 
 Ask one blocking question at a time.
 
 Mark unresolved high-impact information as `[NEEDS CLARIFICATION: <question>]`.
 
-Do not create or modify files before the user approves the complete draft in the conversation.
+Prepare the complete proposal in the conversation or in `docs/changes/now/<change-slug>/spec.md` with `Status: draft`. Before approval, file edits are limited to this proposal and factual lesson entries from authorized investigation; preserve other active changes.
+
+Obtain approval for the complete scope before implementation. Reuse explicit approval already given for that scope, including approval of a final revision; a new turn or workflow stage does not require renewed approval.
 
 Do not treat silence, partial agreement, or approval of one section as approval of the complete draft.
 
-If the user changes the draft, revise it and request approval again.
+Reopen approval only for changes to behavior, scope, acceptance criteria, or high-impact decisions that the user has not already authorized. Set the proposal back to `draft` and pause affected implementation until those changes are approved. Wording corrections, evidence updates, and implementation choices within the approved scope do not reopen approval.
 
-Do not start implementation while a clarification marker remains.
+Do not start implementation while an unresolved clarification remains. Use clarification markers only for actual pending decisions, never in template instructions or examples copied into a change.
 
 ## Draft one change
 
 Use [assets/change-spec.md](assets/change-spec.md) as the change format.
 
-Use a short kebab-case change slug.
+Use a short kebab-case change slug that is unused in both `docs/changes/now/` and `docs/changes/ended/`, unless continuing the same active change.
 
-Use a short kebab-case capability name for each affected area.
+Use short kebab-case names for spec topics, larger capability groups, and lesson topics. List the exact affected spec file paths in the proposal.
 
-Define one change goal.
+Define one change goal. For a pure refactor, state the improvement and the behavior that must remain unchanged.
 
 State explicit non-goals.
 
@@ -55,7 +76,15 @@ Make each user story independently implementable, testable, and demonstrable.
 
 Write each requirement as one observable behavior with exactly one `MUST`.
 
-Give every requirement at least one concrete Given-When-Then scenario.
+Give every requirement change at least one concrete Given-When-Then scenario.
+
+For each requirement change, identify its spec key, operation (`add`, `modify`, or `remove`), target requirement, and related user stories. Reference requirements as `<spec-key>/R1` and scenarios as `<spec-key>/R1/S1`; keep existing IDs and allocate unused IDs for additions. Story IDs are local to their document.
+
+For `modify` or `remove`, capture the current requirement and affected scenarios under `Before`. For `add`, use `Before: None`. This baseline identifies the approved replacement and lets the merge detect later changes.
+
+A `remove` entry specifies the observable outcome after removal and scenarios that verify it. Do not merge that entry as a replacement requirement; represent any lasting replacement contract with a separate `add` or `modify` entry.
+
+For a pure refactor, set requirement changes to `None` and list the existing requirements or observable invariants under preservation checks. Do not invent a behavior change to fit the template.
 
 Check these boundary categories and include each applicable case:
 
@@ -69,11 +98,15 @@ Do not invent a high-impact product, security, compatibility, or data decision.
 
 Do not put implementation details, architecture, task lists, or terminal transcripts in a requirement.
 
-After approval, create `changes/<change-slug>/spec.md` without overwriting another active change.
+Replace instructional placeholders before requesting approval; verification evidence may remain `Pending` until execution.
 
-Create the approved `constitution.md` only when it is missing.
+After approval, create or update the proposal at `docs/changes/now/<change-slug>/spec.md` with `Status: approved`, without overwriting another active change. Include its eventual move to `docs/changes/ended/<change-slug>/` in the approved scope.
+
+Create the approved `docs/constitution.md` only when it is missing.
 
 ## Implement one vertical slice
+
+Use RED-GREEN-REFACTOR for new or changed behavior, including the observable outcome of a removal. For work that only preserves behavior, use the refactor path below.
 
 Select the highest-priority unfinished scenario.
 
@@ -91,7 +124,7 @@ Run the narrow test.
 
 Confirm that it fails because the specified behavior is absent.
 
-If the test passes immediately, correct the test or confirm that the behavior already exists.
+If the test passes immediately, check that it exercises the intended scenario. If the behavior already exists, record that evidence and make no unnecessary product change; do not manufacture a failure.
 
 If the test errors for an unrelated reason, fix the test setup and rerun it.
 
@@ -102,6 +135,8 @@ For a defect, make the test reproduce the defect before changing product code.
 Write only the product code required to pass the current test.
 
 Do not add behavior for later scenarios.
+
+Update or retire tests for behavior explicitly replaced or removed by the approved scope; preserve coverage of unaffected behavior.
 
 Run the narrow test.
 
@@ -117,17 +152,39 @@ Rerun the related test set after each refactor step.
 
 Record concise RED, GREEN, and REFACTOR evidence in the active change spec.
 
+Link evidence to the scenario ID and include the test path and name, commands, expected failure when applicable, and observed results. Explain when existing behavior makes RED unnecessary; record refactoring as not needed when no refactor was performed.
+
 Repeat the cycle for the next scenario.
+
+## Verify a behavior-preserving refactor
+
+Identify the affected public behavior and run its related tests before changing product code. Add characterization tests first when coverage is missing; these tests document existing behavior and may pass immediately.
+
+With a passing baseline, make the refactor and rerun the related tests. Record the preservation checks, test paths, commands, and before-and-after results. No failing test or TDD exception is required solely because the work preserves behavior.
+
+If a check exposes a defect or the planned work changes observable behavior, separate that behavior change, obtain any missing scope approval, and use the RED-GREEN path for it.
 
 ## Control TDD exceptions
 
 Allow a TDD exception only for a throwaway prototype, generated code, or a pure configuration change.
 
-Require explicit user approval for the exception.
+Require explicit user approval for the exception, reusing approval already given for the same scope. Behavior-preserving refactors follow their own verification path above and are not TDD exceptions.
 
 Record its scope, reason, and reproducible alternative verification in the active change spec.
 
 Reject “testing is difficult” and “time is short” as exception reasons.
+
+## Record lessons while working
+
+Use [assets/lessons-learned.md](assets/lessons-learned.md) when creating `docs/lessons-learned/<topic-slug>.md`. Append dated entries to an existing relevant topic file instead of making a new file for every attempt.
+
+Record failed approaches and meaningful trial-and-error when their outcomes are known. Keep the failed entries even when a later approach succeeds. Record a `success` when the solution required substantial investigation or repeated attempts, or offers a reusable technique. Routine first-try successes and expected RED test failures do not require lesson entries.
+
+Use the form `- yyyy-mm-dd description` with nested `type`, `tags`, and `note` fields. The type is exactly `failed` or `success`; tags describe the relevant problem, technology, or conditions.
+
+In the note, explain the context and goal, attempted approach, observed result and evidence, known cause or remaining uncertainty, and what to repeat or avoid under which conditions. For a hard-won success, connect the earlier failed approaches to the verified solution and its reproducible verification. Preserve useful reasoning without copying terminal transcripts, secrets, or routine activity logs.
+
+Create a lesson file only when there is a qualifying entry. Keep execution evidence in the active change as well; a lesson entry does not replace acceptance verification.
 
 ## Verify completion
 
@@ -135,8 +192,8 @@ Run fresh verification in the current turn.
 
 Confirm all of these conditions:
 
-- No clarification marker remains.
-- Every requirement has a passing scenario.
+- The current scope is approved and no unresolved clarification remains.
+- Every acceptance scenario and preservation check passes.
 - Every applicable boundary has a defined result.
 - Every changed behavior has an automated test unless an approved exception covers it.
 - The relevant tests pass.
@@ -150,25 +207,34 @@ Do not report completion from old output, inference, or a prior conversation.
 
 ## Merge current behavior
 
-Reread the active change and every affected capability spec immediately before the merge.
+Reread the active change and every affected spec file immediately before the merge.
 
-Stop and ask the user when the change conflicts with an existing requirement.
+Apply approved `modify` and `remove` operations when the affected current content still matches `Before` in meaning. An intentional replacement covered by the approved proposal does not require another approval.
 
-Use [assets/capability-spec.md](assets/capability-spec.md) when a capability spec does not exist.
+If the target has changed since approval, a new ID now collides, or the change reveals an unapproved conflict, pause the affected merge. Resolve it within existing authorization where possible; ask only for a decision not already authorized. Preserve unrelated intervening changes.
+
+Use [assets/capability-spec.md](assets/capability-spec.md) for approved additions whose spec file does not exist, at the standalone or grouped path listed in the proposal.
 
 Merge by meaning, not by appending the whole change file.
 
-Add or update the approved user value, user stories, observable requirements, scenarios, applicable boundaries, and non-goals.
+Apply each `add`, `modify`, or `remove` to its identified spec file and requirement. Remove only the approved requirement and its scenarios, updating affected references. Preserve IDs for retained requirements and scenarios.
+
+Update the approved user value, user stories, applicable boundaries, and non-goals as needed. Map change-local stories to the target spec's stories by meaning without overwriting an unrelated story with the same local ID.
+
+When no requirement or spec content changes, as in a pure refactor, leave the canonical specs unchanged and review the preservation evidence before archiving the change.
 
 Preserve unaffected current behavior.
 
 Do not merge status, clarification markers, implementation notes, test commands, test output, or TDD evidence.
 
-Review the merged capability specs against the verified behavior.
+Review the merged specs against the verified behavior.
 
-Delete only the exact approved `changes/<change-slug>/` directory after the merge review passes.
+## Archive the completed change
 
-Do not create or move the change into an archive.
+After verification and merge review pass, finish any qualifying lesson entries and set the change spec to `Status: completed`. Move the exact `docs/changes/now/<change-slug>/` directory to `docs/changes/ended/<change-slug>/`; preserve the spec, evidence, and any supporting files.
 
-Report the updated capability specs, fresh verification, and deleted change path.
+Check the destination before moving and never overwrite an existing ended change. If it is occupied, keep the active change and resolve a distinct destination within the authorized scope. Keep blocked or unverified changes under `now/`.
 
+Confirm the completed files exist at the destination and update affected document links to the ended path. Do not delete the change records after archiving.
+
+Report the updated spec paths, fresh verification, ended change path, and any lesson files written.

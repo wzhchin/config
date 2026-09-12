@@ -1,8 +1,8 @@
-# <Capability> Specification
+# <Topic> Specification
 
 ## Purpose
 
-<State the user value and capability boundary.>
+<State the user value and this spec topic's boundary.>
 
 ## Non-goals
 
@@ -18,11 +18,13 @@ As a <role>, I want <action>, so that <value>.
 
 ## Requirements and scenarios
 
-### R1: <requirement name>
+### <spec-key>/R1: <requirement name>
+
+Stories: US1
 
 The system MUST <one observable behavior>.
 
-#### S1: <scenario name>
+#### <spec-key>/R1/S1: <scenario name>
 
 Given <observable initial state>
 
@@ -33,4 +35,3 @@ Then <observable result>
 ## Boundaries
 
 - <Supported or rejected boundary and its observable result.>
-

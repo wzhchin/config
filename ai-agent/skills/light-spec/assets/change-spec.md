@@ -1,18 +1,20 @@
 # Change: <change-slug>
 
-Status: approved
+Status: draft
+
+Archive: Move `docs/changes/now/<change-slug>/` to `docs/changes/ended/<change-slug>/` after verification and merge review pass, preserving this spec and its evidence.
 
 ## Goal
 
-<State one user-visible result.>
+<State one user-visible result, or the refactor improvement and behavior to preserve.>
 
 ## Non-goals
 
 - <State excluded behavior.>
 
-## Affected capabilities
+## Affected specs
 
-- `<capability>`
+- `docs/specs/<spec-key>.md`
 
 ## User stories
 
@@ -24,13 +26,23 @@ As a <role>, I want <action>, so that <value>.
 
 Independent verification: <Describe how to test and demonstrate this story alone.>
 
-## Requirements and scenarios
+## Requirement changes
 
-### R1: <requirement name>
+<Use None for a pure refactor; otherwise repeat the following entry for each requirement change.>
 
-The system MUST <one observable behavior>.
+### <spec-key>/R1: <requirement name>
 
-#### US1-S1: <scenario name>
+Operation: <add | modify | remove>
+
+Stories: US1
+
+Before: <None for add; for modify or remove, copy the current requirement and affected scenarios with their IDs.>
+
+Expected behavior:
+
+The system MUST <one observable post-change behavior, including the expected outcome after a removal>.
+
+#### <spec-key>/R1/S1: <scenario name>
 
 Given <observable initial state>
 
@@ -38,36 +50,36 @@ When <user action or system event>
 
 Then <observable result>
 
+## Preservation checks
+
+<For a pure refactor, list existing requirement or scenario references, or observable invariants when specs are absent, and how each will be verified. Otherwise use None.>
+
 ## Boundary checks
 
-- Empty or missing input: <not applicable, or expected behavior and linked scenario>.
-- Repeated action or idempotency: <not applicable, or expected behavior and linked scenario>.
-- Permission or ownership: <not applicable, or expected behavior and linked scenario>.
-- Dependency failure: <not applicable, or expected behavior and linked scenario>.
-- Existing state or behavior conflict: <not applicable, or expected behavior and linked scenario>.
+Link applicable cases to an acceptance scenario or preservation check.
+
+- Empty or missing input: <not applicable, or expected behavior and verification reference>.
+- Repeated action or idempotency: <not applicable, or expected behavior and verification reference>.
+- Permission or ownership: <not applicable, or expected behavior and verification reference>.
+- Dependency failure: <not applicable, or expected behavior and verification reference>.
+- Existing state or behavior conflict: <not applicable, or expected behavior and verification reference>.
 
 ## Clarifications
 
 None.
 
-<!-- Use `[NEEDS CLARIFICATION: <question>]` for unresolved high-impact information. -->
+## Verification evidence
 
-## TDD evidence
-
-### <scenario ID>
-
-- Test: `<test path and name>`
-- RED: `<command>` — <expected failure>
-- GREEN: `<command>` — <result>
-- REFACTOR: `<command>` — <result>
+Pending.
 
 ## TDD exceptions
 
 None.
 
-<!-- Record the approved scope, reason, and alternative verification. -->
-
 ## Completion verification
 
-- `<fresh command or procedure>` — <result and date>
+Pending.
 
+## Lessons learned
+
+<Link relevant entries in docs/lessons-learned/<topic-slug>.md, or use None when there is no qualifying lesson.>

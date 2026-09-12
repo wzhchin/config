@@ -1,52 +1,19 @@
 # <Project> Constitution
 
-This constitution defines the non-negotiable rules for changes that use Light Spec.
+Record only durable project-specific constraints. The Light Spec skill defines its workflow; do not duplicate that workflow here. Omit unused sections.
 
-## Current behavior
+## Compatibility and supported environments
 
-- Treat `specs/<capability>/spec.md` as the source of truth for verified current behavior.
-- Keep an active change in `changes/<change-slug>/spec.md`.
-- Merge a change into `specs/` only after fresh verification passes.
-- Delete the merged change.
-- Do not create an archive.
+- <Supported interface or environment and the compatibility guarantee to preserve.>
 
-## User value and scope
+## Security and data constraints
 
-- Define one goal for each change.
-- State explicit non-goals.
-- Include at least one P1 user story.
-- Make each user story independently implementable, testable, and demonstrable.
-- Do not implement an unresolved `[NEEDS CLARIFICATION: ...]` item.
+- <Project-specific permission, ownership, retention, or data-handling constraint.>
 
-## Observable requirements
+## Required verification
 
-- Write each requirement as one observable behavior with exactly one `MUST`.
-- Give every requirement at least one Given-When-Then scenario.
-- Check applicable empty input, repeated action, permission, dependency failure, and state conflict boundaries.
-- Keep implementation and architecture details out of requirements.
+- <Existing project check command, when it applies, and any required environment.>
 
-## Test-driven development
+## Other project constraints
 
-- Use TDD for every feature, defect fix, refactor, and behavior change.
-- Write one failing behavior test before product code.
-- Confirm that the test fails because the behavior is absent.
-- Write only the product code required to pass the current test.
-- Refactor only while the related tests pass.
-- Complete one RED-GREEN-REFACTOR slice before starting the next behavior.
-- For a defect, reproduce the defect with a failing test before fixing it.
-
-## Completion
-
-- Resolve every clarification.
-- Pass every acceptance scenario and relevant test.
-- Pass the project standard checks.
-- Keep all stated non-goals out of the implementation.
-- Make the canonical specs match the verified behavior.
-
-## Exceptions
-
-- Require explicit user approval for each TDD exception.
-- Limit exceptions to throwaway prototypes, generated code, and pure configuration changes.
-- Record the scope, reason, and reproducible alternative verification.
-- Reject test difficulty and time pressure as exception reasons.
-
+- <A durable project rule not already captured above, with its reason.>
