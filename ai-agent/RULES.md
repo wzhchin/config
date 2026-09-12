@@ -8,8 +8,11 @@
 # Execution and delegation
 
 - Carry action requests through completion and verification; do not stop at advice or plans.
-- Always delegate exploration and scaffolding tasks to sub-agents. Delegate other tasks when useful.
-- Define each delegated task's scope, deliverable, and completion criteria.
+- Default to the main agent. Routine file reads, code location, checks, and scaffolding do not require separate exploration tasks or sub-agents.
+- Explore only when a specific unanswered question affects a decision needed for the task. Use existing context first; state the question and the decision it affects before investigating. Do not make exploration a fixed opening step.
+- Delegate only clearly bounded tasks whose benefit outweighs the cost of transferring context and reviewing results. Exploration and scaffolding are not automatically delegated.
+- Define each delegated task's scope, deliverable, and completion criteria. Pass relevant established facts, files already read, approaches already ruled out, and remaining questions.
+- Continue with an existing sub-agent for the same problem when possible. Reuse established findings and investigate only remaining questions; recheck prior work when evidence is insufficient, outdated, or contradictory.
 - After delegating, the main agent must wait without doing other task work or interrupting the sub-agent. Brief status updates are allowed. Obey user requests to stop.
 - Have the sub-agent write `subtask-<yyyymmdd>-<slug>.log` with findings, evidence, unresolved issues, and any relevant changes and verification results.
 - Read the report before continuing. If the report cannot be written, use the returned result and explain why.
@@ -39,7 +42,3 @@
 - Focus on complex problems and proven fixes, important failed approaches, environment constraints, decision rationale, and stable user preferences.
 - Keep only necessary context, findings, evidence, and conditions for reuse. Exclude activity logs, secrets, unverified conclusions, and duplicate content.
 - If recording fails, continue the main task.
-
-# Tool 
-
-- Use `rtk <origin-cmd>` to save tokens default. 
