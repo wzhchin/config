@@ -26,7 +26,9 @@ docs/
 
 Keep `docs/specs/` as the source of truth for verified current behavior. Use a single `docs/specs/<slug>.md` for a small, self-contained topic. Group related topics under `docs/specs/<big-slug>/<slug>.md` when they belong to a larger capability; do not create a directory for every small spec.
 
-A spec key is its path relative to `docs/specs/` without `.md`: `login` or `accounts/login`. Use the full key in requirement and scenario references to distinguish topics with the same leaf name. Keep existing spec locations unless the approved change requires reorganizing them.
+Keep canonical specs compact: each contains only current requirements. Purpose, non-goals, user stories, acceptance scenarios, and boundary analysis belong to change records under `docs/changes/`. When a verified boundary outcome remains part of current behavior, express it as its own requirement rather than copying the change's boundary analysis or Given-When-Then scenario.
+
+A spec key is its path relative to `docs/specs/` without `.md`: `login` or `accounts/login`. Inside a spec, identify requirements as `R1`, `R2`, and so on. Outside that file, reference them with the full key, such as `accounts/login/R1`, to distinguish topics with the same leaf name. Keep existing IDs and spec locations unless the approved change requires changing them.
 
 Keep active proposals and evidence in `docs/changes/now/<change-slug>/spec.md`. After verification and merge review, move the entire change directory to `docs/changes/ended/<change-slug>/`, preserving its contents. Ended changes describe past work; current behavior belongs in `docs/specs/`.
 
@@ -66,7 +68,7 @@ Use a short kebab-case change slug that is unused in both `docs/changes/now/` an
 
 Use short kebab-case names for spec topics, larger capability groups, and lesson topics. List the exact affected spec file paths in the proposal.
 
-Define one change goal. For a pure refactor, state the improvement and the behavior that must remain unchanged.
+State one change purpose with one goal and its user value. For a pure refactor, state the improvement and the behavior that must remain unchanged.
 
 State explicit non-goals.
 
@@ -74,15 +76,21 @@ Write at least one P1 user story.
 
 Make each user story independently implementable, testable, and demonstrable.
 
-Write each requirement as one observable behavior with exactly one `MUST`.
+Give each user story at least one concrete Given-When-Then acceptance scenario. Identify change-local stories and scenarios as `US1` and `US1/S1`.
 
-Give every requirement change at least one concrete Given-When-Then scenario.
+Write each requirement as one observable behavior with exactly one `MUST`. Include any condition that changes the result in the same normative sentence so the requirement remains testable without its change record.
 
-For each requirement change, identify its spec key, operation (`add`, `modify`, or `remove`), target requirement, and related user stories. Reference requirements as `<spec-key>/R1` and scenarios as `<spec-key>/R1/S1`; keep existing IDs and allocate unused IDs for additions. Story IDs are local to their document.
+Split distinct observable outcomes into separate requirements instead of nesting cases or scenarios in a canonical spec.
 
-For `modify` or `remove`, capture the current requirement and affected scenarios under `Before`. For `add`, use `Before: None`. This baseline identifies the approved replacement and lets the merge detect later changes.
+Give every requirement change at least one acceptance scenario and reference its `US1/S1` ID.
 
-A `remove` entry specifies the observable outcome after removal and scenarios that verify it. Do not merge that entry as a replacement requirement; represent any lasting replacement contract with a separate `add` or `modify` entry.
+For each requirement change, identify its spec key, operation (`add`, `modify`, or `remove`), target requirement, related user stories, and acceptance scenarios. Reference requirements as `<spec-key>/R1`; keep existing IDs and allocate unused IDs for additions. Story and acceptance-scenario IDs are local to their change document.
+
+For `modify` or `remove`, copy the exact current requirement sentence under `Before`. For `add`, use `Before: None`. This baseline identifies the approved replacement and lets the merge detect later changes.
+
+For `add` or `modify`, put the exact final canonical requirement under `After`. For `remove`, use `After: None`.
+
+A `remove` entry uses acceptance scenarios to specify and verify the observable outcome after removal. Do not merge that entry as a replacement requirement; represent any lasting replacement contract with a separate `add` or `modify` entry.
 
 For a pure refactor, set requirement changes to `None` and list the existing requirements or observable invariants under preservation checks. Do not invent a behavior change to fit the template.
 
@@ -108,9 +116,9 @@ Create the approved `docs/constitution.md` only when it is missing.
 
 Use RED-GREEN-REFACTOR for new or changed behavior, including the observable outcome of a removal. For work that only preserves behavior, use the refactor path below.
 
-Select the highest-priority unfinished scenario.
+Select the highest-priority unfinished acceptance scenario.
 
-Execute one RED-GREEN-REFACTOR slice before starting the next scenario.
+Execute one RED-GREEN-REFACTOR slice before starting the next acceptance scenario.
 
 ### RED
 
@@ -134,7 +142,7 @@ For a defect, make the test reproduce the defect before changing product code.
 
 Write only the product code required to pass the current test.
 
-Do not add behavior for later scenarios.
+Do not add behavior for later acceptance scenarios.
 
 Update or retire tests for behavior explicitly replaced or removed by the approved scope; preserve coverage of unaffected behavior.
 
@@ -152,9 +160,9 @@ Rerun the related test set after each refactor step.
 
 Record concise RED, GREEN, and REFACTOR evidence in the active change spec.
 
-Link evidence to the scenario ID and include the test path and name, commands, expected failure when applicable, and observed results. Explain when existing behavior makes RED unnecessary; record refactoring as not needed when no refactor was performed.
+Link evidence to the acceptance-scenario ID and include the test path and name, commands, expected failure when applicable, and observed results. Explain when existing behavior makes RED unnecessary; record refactoring as not needed when no refactor was performed.
 
-Repeat the cycle for the next scenario.
+Repeat the cycle for the next acceptance scenario.
 
 ## Verify a behavior-preserving refactor
 
@@ -209,7 +217,7 @@ Do not report completion from old output, inference, or a prior conversation.
 
 Reread the active change and every affected spec file immediately before the merge.
 
-Apply approved `modify` and `remove` operations when the affected current content still matches `Before` in meaning. An intentional replacement covered by the approved proposal does not require another approval.
+Apply approved `modify` and `remove` operations when the affected current requirement still matches `Before` exactly except for insignificant formatting. An intentional replacement covered by the approved proposal does not require another approval.
 
 If the target has changed since approval, a new ID now collides, or the change reveals an unapproved conflict, pause the affected merge. Resolve it within existing authorization where possible; ask only for a decision not already authorized. Preserve unrelated intervening changes.
 
@@ -217,9 +225,9 @@ Use [assets/capability-spec.md](assets/capability-spec.md) for approved addition
 
 Merge by meaning, not by appending the whole change file.
 
-Apply each `add`, `modify`, or `remove` to its identified spec file and requirement. Remove only the approved requirement and its scenarios, updating affected references. Preserve IDs for retained requirements and scenarios.
+Apply each `add`, `modify`, or `remove` to its identified spec file and requirement. For `add` and `modify`, merge the approved `After` sentence. For `remove`, remove only the approved requirement. Preserve IDs for retained requirements and update affected references.
 
-Update the approved user value, user stories, applicable boundaries, and non-goals as needed. Map change-local stories to the target spec's stories by meaning without overwriting an unrelated story with the same local ID.
+Do not merge the change purpose, non-goals, user stories, Given-When-Then acceptance scenarios, boundary checks, or their local IDs into `docs/specs/`. Ensure every merged requirement is complete and testable without consulting the archived change. Represent any lasting boundary behavior as a requirement of its own.
 
 When no requirement or spec content changes, as in a pure refactor, leave the canonical specs unchanged and review the preservation evidence before archiving the change.
 

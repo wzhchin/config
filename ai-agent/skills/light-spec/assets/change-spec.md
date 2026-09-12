@@ -4,9 +4,9 @@ Status: draft
 
 Archive: Move `docs/changes/now/<change-slug>/` to `docs/changes/ended/<change-slug>/` after verification and merge review pass, preserving this spec and its evidence.
 
-## Goal
+## Purpose
 
-<State one user-visible result, or the refactor improvement and behavior to preserve.>
+<State one change goal and its user value, or the refactor improvement and behavior to preserve.>
 
 ## Non-goals
 
@@ -26,23 +26,7 @@ As a <role>, I want <action>, so that <value>.
 
 Independent verification: <Describe how to test and demonstrate this story alone.>
 
-## Requirement changes
-
-<Use None for a pure refactor; otherwise repeat the following entry for each requirement change.>
-
-### <spec-key>/R1: <requirement name>
-
-Operation: <add | modify | remove>
-
-Stories: US1
-
-Before: <None for add; for modify or remove, copy the current requirement and affected scenarios with their IDs.>
-
-Expected behavior:
-
-The system MUST <one observable post-change behavior, including the expected outcome after a removal>.
-
-#### <spec-key>/R1/S1: <scenario name>
+#### US1/S1 — <acceptance scenario name>
 
 Given <observable initial state>
 
@@ -50,9 +34,25 @@ When <user action or system event>
 
 Then <observable result>
 
+## Requirement changes
+
+<Use None for a pure refactor; otherwise repeat the following entry for each requirement change.>
+
+### <spec-key>/R1 — <requirement name>
+
+Operation: <add | modify | remove>
+
+Stories: US1
+
+Acceptance scenarios: US1/S1
+
+Before: <None for add; for modify or remove, copy the exact current requirement sentence.>
+
+After: <For add or modify, write the exact final requirement sentence for the canonical spec; for remove, use None.>
+
 ## Preservation checks
 
-<For a pure refactor, list existing requirement or scenario references, or observable invariants when specs are absent, and how each will be verified. Otherwise use None.>
+<For a pure refactor, list existing requirement references, or observable invariants when specs are absent, and how each will be verified. Otherwise use None.>
 
 ## Boundary checks
 
