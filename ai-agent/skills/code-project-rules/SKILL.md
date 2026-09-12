@@ -24,6 +24,8 @@ Load the applicable engineering rules before project work.
 | Project commands | Build, test, run, clean, release, package, deploy, Makefile, or stack command execution | `references/makefile.md` |
 | Frontend | HTML, CSS, JavaScript, TypeScript, React, Vite, Tailwind, pnpm, web pages, or browser UI | `references/frontend.md` |
 | Python | Python, `.py`, uv, venv, Python dependencies, or Python scripts | `references/python.md` |
+| Android build | Android, Gradle wrapper or repositories, `settings.gradle`, `settings.gradle.kts`, `gradle-wrapper.properties`, release signing, keystore, or `kpass` | `references/android-build.md` |
+| Shell scripts | Bash, `.sh`, bash shebangs, or extensionless shell scripts | `references/shell-script.md` |
 
 ## Extend routing
 
