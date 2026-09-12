@@ -47,16 +47,9 @@ dependencyResolutionManagement {
 | Gradle Plugin Portal | `https://maven.aliyun.com/repository/gradle-plugin` |
 | Maven Central and other public artifacts | `https://maven.aliyun.com/repository/public` |
 
-## Release signing with kpass
+## Release signing
 
-Require `kpass` on `PATH`.
-
-```bash
-kpass get ENTRY
-kpass get-file ENTRY [-o OUTPUT_DIR]   # default: $XDG_RUNTIME_DIR
-kpass put ENTRY
-kpass put-file PATH ENTRY
-```
+Apply the core secret-handling rule to these Android-specific entries:
 
 | Variable | Default entry | Use |
 | --- | --- | --- |
@@ -87,7 +80,7 @@ Never hardcode passwords. Never commit the release keystore or signing propertie
 ## Checklist
 
 - Mirrors: set `distributionUrl` to Tencent; put Aliyun repositories first, official repositories last, and retain JitPack. Summarize changes and do not commit unless asked.
-- Signing: confirm `kpass` is on `PATH`; export secrets and the keystore; write only `signature/keystore_release.properties`; keep secrets out of logs and commits.
+- Signing: retrieve the secrets and keystore; write only `signature/keystore_release.properties`; keep secrets out of logs and commits.
 
 ## Troubleshooting
 

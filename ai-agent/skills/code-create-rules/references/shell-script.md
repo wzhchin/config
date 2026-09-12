@@ -57,7 +57,9 @@ Never use the `x` prefix hack for empty checks:
 
 ## Argument parsing
 
-Use a manual `while`, `shift`, and `case` pattern:
+Use either manual `while`, `shift`, and `case` parsing or `getopt`. Prefer manual parsing for simple arguments; use `getopt` when several short and long options need normalization or value handling.
+
+Manual parsing example:
 
 ```bash
 while [[ $# -gt 0 ]]; do

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Code Create Rules"
+  short_description: "Apply defaults when creating new code projects"
+  default_prompt: "Use $code-create-rules to create a new code project with my preferred engineering defaults."
