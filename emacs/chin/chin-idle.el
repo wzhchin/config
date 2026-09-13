@@ -17,9 +17,5 @@
   (require 'which-key)
   (which-key-mode 1))
 
-(chin/load-idle! 0
-  (require 'git-gutter)
-  (global-git-gutter-mode 1))
-
 (provide 'chin-idle)
 ;;; chin-idle.el ends here

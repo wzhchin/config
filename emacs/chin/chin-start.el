@@ -44,8 +44,6 @@ Keep the selected faces transparent on TTY frames."
 
 (defvar chin/evil-initialized nil)
 
-(declare-function eglot-code-actions "eglot")
-(declare-function eglot-rename "eglot")
 (declare-function global-git-gutter-mode "git-gutter")
 (declare-function global-display-line-numbers-mode "display-line-numbers")
 (declare-function evil-define-key* "evil")
@@ -77,16 +75,10 @@ Keep the selected faces transparent on TTY frames."
   "b" #'consult-buffer
   "d" #'kill-current-buffer)
 
-(defvar-keymap chin/evil-code-map
-  :doc "Leader bindings for code actions."
-  "a" #'eglot-code-actions
-  "r" #'eglot-rename)
-
 (defvar-keymap chin/evil-leader-map
   :doc "Leader keymap used from Evil normal state."
   "?" #'describe-prefix-bindings
   "b" chin/evil-buffer-map
-  "c" chin/evil-code-map
   "f" chin/evil-find-map
   "l" #'chin/toggle-git-gutter-and-line-numbers
   "q" #'quit-window
@@ -122,6 +114,18 @@ Keep the selected faces transparent on TTY frames."
   (load (expand-file-name file user-emacs-directory) nil t t))
 
 (require 'chin-idle)
+
+;; Keep the lightweight editor path free of development packages while making
+;; `dev-mode' available as an on-demand upgrade.
+(autoload #'dev-mode "chin-dev"
+          "Enable development tools in the current programming buffer." t)
+
+(defun chin/command-line-dev (_switch)
+  "Load development configuration for the `--chin-dev' switch."
+  (require 'chin-dev))
+
+(add-to-list 'command-switch-alist
+             '("--chin-dev" . chin/command-line-dev))
 
 (defvar chin/first-call-loaded nil)
 
