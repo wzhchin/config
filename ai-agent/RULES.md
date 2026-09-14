@@ -36,9 +36,7 @@
 - Explain as fully as the question requires. Use examples to aid understanding, without a fixed number.
 - Use planning tools for multi-step work when available. System and tool-environment constraints take precedence.
 
-# Reusable notes
+# Memory
 
-- Record reusable findings with `amem append`. Do not investigate or modify amem's internal implementation.
-- Focus on complex problems and proven fixes, important failed approaches, environment constraints, decision rationale, and stable user preferences.
-- Keep only necessary context, findings, evidence, and conditions for reuse. Exclude activity logs, secrets, unverified conclusions, and duplicate content.
-- If recording fails, continue the main task.
+- Keep project-specific knowledge in project memory.
+- Use `amem append` only for cross-session, cross-project lessons and verified solutions; exclude progress, local state, secrets, and unverified claims. Before appending, `amem search` and `amem view`; `amem help` for usage.

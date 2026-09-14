@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""amem — agent-mem. Decision log backed by sqlite + fts5.
+"""amem — cross-project agent lessons backed by sqlite + fts5.
 
 Config: $XDG_CONFIG_HOME/amem/config.yaml (default ~/.config/amem/config.yaml)
 DB path comes only from that file's `db` key.
@@ -25,31 +25,67 @@ REQUIRED_FIELDS = ("theme", "type", "note")
 APPEND_TYPES = ("fail", "success")
 NOTE_TYPES = ("fail", "success", "outdated")
 
-USAGE = """\
-amem — agent decision log.
-fail=do not repeat  success=follow this  outdated=stale
-TARGET = theme or note md5. delete is soft. type-set on a theme hits all live notes.
-
-append [-f FILE]
-  theme: sqlite-fts
-  tags: python,sqlite
+APPEND_DESC = """\
+-f <YAML_FILE>
+or
+<<EOF
+  theme: python-virtual-environment-portability
+  tags: python,deployment
   type: fail
-  note: what happened
+  note: failed approach, why it fails, and the verified replacement
+EOF
+"""
 
-search [KW] [-t TAG]... [--type fail|success|outdated] # at least one arg
-  - theme: sqlite-fts
-    tags: python,sqlite
+SEARCH_DESC = """\
+[KW] [-t TAG]... [--union|--intersection] [--type fail|success|outdated]
+  KW is split on whitespace; --union is the default, and at least one arg is required
+  - theme: python-virtual-environment-portability
+    tags: python,deployment
+"""
 
-view THEME [--type fail|success|outdated]
-  theme: sqlite-fts
-  tags: python,sqlite
-  - note: what happened
+VIEW_DESC = """\
+THEME [--type fail|success|outdated]
+  theme: python-virtual-environment-portability
+  tags: python,deployment
+  - note: failed approach, why it fails, and the verified replacement
     time: yyyy-mm-dd hh:mm:ss
     type: fail
     id: <md5-of-note>
+"""
 
-type-set TARGET fail|success|outdated
-delete TARGET
+
+TYPE_DESC = """\
+TARGET fail|success|outdated
+"""
+
+DEL_DESC = """\
+TARGET
+"""
+
+STATISTICS_DESC = """\
+show counts for live themes, tag assignments, and notes
+"""
+
+HELP_DESC = """\
+show the full usage policy and examples
+"""
+
+PARSER_DESC = """\
+Project memory comes first: keep project-specific facts, decisions, constraints,
+progress, and solutions in that project's documentation or memory.
+
+Store in amem only when the lesson remains useful across sessions and unrelated
+projects. Prioritize costly or repeatable failures and verified correct approaches.
+For a failure, record why it failed and what to do instead when known. Do not store
+task progress, one-off local state, secrets, unverified claims, or project-only facts.
+
+Before append, search and view related themes. Reuse a matching theme and do not
+append semantic duplicates. A theme must make sense without repository, task, path,
+or conversation context: name the concrete object and knowledge domain, not a
+project, phase, incident, or individual conclusion.
+
+fail=lesson about what not to repeat  success=verified correct approach  outdated=stale
+TARGET = theme or note md5. delete is soft. type-set on a theme hits all live notes.
 """
 
 SCHEMA = """
@@ -450,6 +486,7 @@ def matching_theme_ids(
     keyword: str,
     tags: list[str],
     note_type: str | None = None,
+    keyword_mode: str = "union",
 ) -> list[int]:
     sql = ["SELECT t.id FROM theme t WHERE t.delete_time IS NULL"]
     args: list[object] = []
@@ -472,47 +509,51 @@ def matching_theme_ids(
         )
         args.append(note_type)
 
-    keyword = keyword.strip()
-    if keyword:
-        like = like_contains(keyword)
-        clauses = [
-            "t.name LIKE ? ESCAPE '#'",
-            "EXISTS ("
-            "SELECT 1 FROM tag g "
-            "WHERE g.theme_id = t.id AND g.delete_time IS NULL "
-            "AND g.name LIKE ? ESCAPE '#'"
-            ")",
-        ]
-        args.extend([like, like])
-        note_sql = (
-            "EXISTS ("
-            "SELECT 1 FROM note n "
-            "WHERE n.theme_id = t.id AND n.delete_time IS NULL "
-            "AND n.content LIKE ? ESCAPE '#'"
-        )
-        args.append(like)
-        if note_type:
-            note_sql += " AND n.type = ?"
-            args.append(note_type)
-        note_sql += ")"
-        clauses.append(note_sql)
-        # FTS concatenates fail and success notes; skip it when --type is set.
-        fts_q = None if note_type else fts_match_query(keyword)
-        if fts_q is not None:
-            try:
-                hits = [
-                    r[0]
-                    for r in conn.execute(
-                        "SELECT rowid FROM fts WHERE fts MATCH ?", (fts_q,)
-                    )
-                ]
-            except sqlite3.OperationalError:
-                hits = []
-            if hits:
-                placeholders = ",".join("?" * len(hits))
-                clauses.append(f"t.id IN ({placeholders})")
-                args.extend(hits)
-        sql.append("AND (" + " OR ".join(clauses) + ")")
+    terms = keyword.split()
+    if terms:
+        term_clauses: list[str] = []
+        joiner = " OR " if keyword_mode == "union" else " AND "
+        for term in terms:
+            like = like_contains(term)
+            clauses = [
+                "t.name LIKE ? ESCAPE '#'",
+                "EXISTS ("
+                "SELECT 1 FROM tag g "
+                "WHERE g.theme_id = t.id AND g.delete_time IS NULL "
+                "AND g.name LIKE ? ESCAPE '#'"
+                ")",
+            ]
+            args.extend([like, like])
+            note_sql = (
+                "EXISTS ("
+                "SELECT 1 FROM note n "
+                "WHERE n.theme_id = t.id AND n.delete_time IS NULL "
+                "AND n.content LIKE ? ESCAPE '#'"
+            )
+            args.append(like)
+            if note_type:
+                note_sql += " AND n.type = ?"
+                args.append(note_type)
+            note_sql += ")"
+            clauses.append(note_sql)
+            # FTS concatenates fail and success notes; skip it when --type is set.
+            fts_q = None if note_type else fts_match_query(term)
+            if fts_q is not None:
+                try:
+                    hits = [
+                        r[0]
+                        for r in conn.execute(
+                            "SELECT rowid FROM fts WHERE fts MATCH ?", (fts_q,)
+                        )
+                    ]
+                except sqlite3.OperationalError:
+                    hits = []
+                if hits:
+                    placeholders = ",".join("?" * len(hits))
+                    clauses.append(f"t.id IN ({placeholders})")
+                    args.extend(hits)
+            term_clauses.append("(" + " OR ".join(clauses) + ")")
+        sql.append("AND (" + joiner.join(term_clauses) + ")")
 
     sql.append("ORDER BY t.update_time DESC, t.id DESC")
     return [int(r["id"]) for r in conn.execute(" ".join(sql), args)]
@@ -523,13 +564,14 @@ def cmd_search(
     keyword: str,
     tags: list[str],
     note_type: str | None = None,
+    keyword_mode: str = "union",
 ) -> int:
-    if keyword or tags or note_type:
+    if keyword.strip() or tags or note_type:
         pass
     else:
-        print(USAGE)
-        exit(1)
-    ids = matching_theme_ids(conn, keyword, tags, note_type)
+        print(build_parser().format_help(), end="")
+        return 1
+    ids = matching_theme_ids(conn, keyword, tags, note_type, keyword_mode)
     if not ids:
         print("[]")
         return 0
@@ -579,6 +621,32 @@ def cmd_view(
         out.append(f"  type: {note['type']}")
         out.append(f"  id: {note['hash']}")
     print("\n".join(out))
+    return 0
+
+
+def cmd_statistics(conn: sqlite3.Connection) -> int:
+    themes = conn.execute(
+        "SELECT COUNT(*) FROM theme WHERE delete_time IS NULL"
+    ).fetchone()[0]
+    tags = conn.execute(
+        "SELECT COUNT(*) FROM tag WHERE delete_time IS NULL"
+    ).fetchone()[0]
+    notes = conn.execute(
+        "SELECT COUNT(*) FROM note WHERE delete_time IS NULL"
+    ).fetchone()[0]
+    note_types = {note_type: 0 for note_type in NOTE_TYPES}
+    for row in conn.execute(
+        "SELECT type, COUNT(*) AS count FROM note "
+        "WHERE delete_time IS NULL GROUP BY type"
+    ):
+        note_types[row["type"]] = int(row["count"])
+
+    print(f"themes: {int(themes)}")
+    print(f"tags: {int(tags)}")
+    print(f"notes: {int(notes)}")
+    print("note_types:")
+    for note_type in NOTE_TYPES:
+        print(f"  {note_type}: {note_types[note_type]}")
     return 0
 
 
@@ -695,22 +763,32 @@ def add_type_option(parser: argparse.ArgumentParser) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=PROG,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="Agent decision memory. Run `amem help` for usage.",
+        formatter_class=argparse.RawTextHelpFormatter,
+        description=PARSER_DESC,
     )
     sub = parser.add_subparsers(dest="cmd", required=False)
 
-    append = sub.add_parser("append", help="read a record from stdin or -f")
+    append = sub.add_parser(
+        "append",
+        help=APPEND_DESC,
+        description=APPEND_DESC,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     append.add_argument(
         "-f",
         dest="file",
         default=None,
-        metavar="PATH",
+        metavar="FILE",
         help="yaml file; validates theme/type/note (tags optional)",
     )
 
-    search = sub.add_parser("search", help="search themes by keyword and tags")
-    search.add_argument("keyword", nargs="?", default="")
+    search = sub.add_parser(
+        "search",
+        help=SEARCH_DESC,
+        description=SEARCH_DESC,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    search.add_argument("keyword", nargs="?", default="", metavar="KW")
     search.add_argument(
         "-t",
         dest="tags",
@@ -719,44 +797,96 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="TAG",
         help="theme must have this tag; repeat for AND",
     )
+    keyword_mode = search.add_mutually_exclusive_group()
+    keyword_mode.add_argument(
+        "--union",
+        dest="keyword_mode",
+        action="store_const",
+        const="union",
+        default="union",
+        help="split KW by whitespace and match any term (default)",
+    )
+    keyword_mode.add_argument(
+        "--intersection",
+        dest="keyword_mode",
+        action="store_const",
+        const="intersection",
+        help="split KW by whitespace and match every term",
+    )
     add_type_option(search)
 
-    view = sub.add_parser("view", help="show a theme and its notes")
-    view.add_argument("theme")
+    view = sub.add_parser(
+        "view",
+        help=VIEW_DESC,
+        description=VIEW_DESC,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    view.add_argument("theme", metavar="THEME")
     add_type_option(view)
 
-    type_set = sub.add_parser(
-        "type-set", help="set fail/success/outdated on a theme or note id"
+    sub.add_parser(
+        "statistics",
+        help=STATISTICS_DESC,
+        description=STATISTICS_DESC,
     )
-    type_set.add_argument("target", help="theme name or note md5")
+
+    type_set = sub.add_parser(
+        "type-set",
+        help=TYPE_DESC,
+        description=TYPE_DESC,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    type_set.add_argument(
+        "target", metavar="TARGET", help="theme name or note md5"
+    )
     type_set.add_argument(
         "new_type",
-        metavar="type",
+        metavar="TYPE",
         choices=NOTE_TYPES,
         help="fail, success, or outdated",
     )
 
-    delete = sub.add_parser("delete", help="soft-delete a theme name or note id")
-    delete.add_argument("target", help="theme name or md5 of a note")
-    sub.add_parser("help", help="show usage")
+    delete = sub.add_parser(
+        "delete",
+        help=DEL_DESC,
+        description=DEL_DESC,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    delete.add_argument(
+        "target", metavar="TARGET", help="theme name or md5 of a note"
+    )
+    sub.add_parser(
+        "help",
+        help=HELP_DESC,
+        description=HELP_DESC,
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    ensure_config()
+    if argv is None:
+        argv = sys.argv[1:]
+    else:
+        argv = list(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
     if args.cmd in (None, "help"):
-        print(USAGE, end="")
+        print(parser.format_help(), end="")
         return 0
+    ensure_config()
     conn = connect(db_path(load_config()))
     try:
         if args.cmd == "append":
             raw, source = read_append_text(args.file)
             return cmd_append(conn, raw, source)
         if args.cmd == "search":
-            return cmd_search(conn, args.keyword, args.tags, args.type)
+            return cmd_search(
+                conn, args.keyword, args.tags, args.type, args.keyword_mode
+            )
         if args.cmd == "view":
             return cmd_view(conn, args.theme, args.type)
+        if args.cmd == "statistics":
+            return cmd_statistics(conn)
         if args.cmd == "type-set":
             return cmd_type_set(conn, args.target, args.new_type)
         if args.cmd == "delete":

@@ -21,7 +21,8 @@ docs/
 │   ├── <slug>.md
 │   └── <big-slug>/<slug>.md
 └── lessons-learned/
-    └── <topic-slug>.md
+    └── <topic-slug>/
+        └── <yyyy-mm-dd>-<lesson-slug>.md
 ```
 
 Keep `docs/specs/` as the source of truth for verified current behavior. Use a single `docs/specs/<slug>.md` for a small, self-contained topic. Group related topics under `docs/specs/<big-slug>/<slug>.md` when they belong to a larger capability; do not create a directory for every small spec.
@@ -32,7 +33,7 @@ A spec key is its path relative to `docs/specs/` without `.md`: `login` or `acco
 
 Keep active proposals and evidence in `docs/changes/now/<change-slug>/spec.md`. After verification and merge review, move the entire change directory to `docs/changes/ended/<change-slug>/`, preserving its contents. Ended changes describe past work; current behavior belongs in `docs/specs/`.
 
-Keep reusable failed attempts and instructive successes in topic files under `docs/lessons-learned/`. The optional `docs/constitution.md` contains only project-specific constraints.
+Keep each reusable failed attempt or instructive success in its own Markdown file under `docs/lessons-learned/<topic-slug>/`. Store searchable metadata in YAML frontmatter and explanation and evidence in the Markdown body. The optional `docs/constitution.md` contains only project-specific constraints.
 
 ## Preserve the approval gate
 
@@ -40,9 +41,9 @@ Inspect the target repository and its local instructions before proposing files.
 
 Read `docs/constitution.md` when it exists and honor its applicable project constraints. Follow the governing instruction hierarchy if it conflicts with this skill; do not silently rewrite it.
 
-Read every affected file under `docs/specs/` and relevant topic files under `docs/lessons-learned/` when they exist. Use earlier lessons to avoid repeating failed approaches under the same conditions.
+Read every affected file under `docs/specs/` and relevant lesson files under `docs/lessons-learned/<topic-slug>/` when they exist. Use earlier lessons to avoid repeating failed approaches under the same conditions.
 
-This skill owns the general workflow. Use [assets/constitution.md](assets/constitution.md) only when a missing constitution would capture project-specific constraints worth retaining. Include those constraints in the proposal; do not copy this workflow into the project or create an empty constitution.
+This skill owns the general workflow. Use [references/constitution.md](references/constitution.md) only when a missing constitution would capture project-specific constraints worth retaining. Include those constraints in the proposal; do not copy this workflow into the project or create an empty constitution.
 
 Establish the goal, non-goals, user value, affected capabilities, boundaries, and public behavior from the request and existing context. Ask only about missing information that affects the result.
 
@@ -62,11 +63,11 @@ Do not start implementation while an unresolved clarification remains. Use clari
 
 ## Draft one change
 
-Use [assets/change-spec.md](assets/change-spec.md) as the change format.
+Use [references/change-spec.md](references/change-spec.md) as the change format.
 
 Use a short kebab-case change slug that is unused in both `docs/changes/now/` and `docs/changes/ended/`, unless continuing the same active change.
 
-Use short kebab-case names for spec topics, larger capability groups, and lesson topics. List the exact affected spec file paths in the proposal.
+Use short kebab-case names for spec topics, larger capability groups, lesson topics, and lesson slugs. List the exact affected spec file paths in the proposal.
 
 State one change purpose with one goal and its user value. For a pure refactor, state the improvement and the behavior that must remain unchanged.
 
@@ -184,13 +185,13 @@ Reject “testing is difficult” and “time is short” as exception reasons.
 
 ## Record lessons while working
 
-Use [assets/lessons-learned.md](assets/lessons-learned.md) when creating `docs/lessons-learned/<topic-slug>.md`. Append dated entries to an existing relevant topic file instead of making a new file for every attempt.
+Use [references/lessons-learned.md](references/lessons-learned.md) when creating `docs/lessons-learned/<topic-slug>/<yyyy-mm-dd>-<lesson-slug>.md`. Create one file per qualifying lesson. Use the date when the outcome became known and a short kebab-case slug that describes the lesson. If that path already exists, choose a more specific slug; never overwrite another lesson.
 
 Record failed approaches and meaningful trial-and-error when their outcomes are known. Keep the failed entries even when a later approach succeeds. Record a `success` when the solution required substantial investigation or repeated attempts, or offers a reusable technique. Routine first-try successes and expected RED test failures do not require lesson entries.
 
-Use the form `- yyyy-mm-dd description` with nested `type`, `tags`, and `note` fields. The type is exactly `failed` or `success`; tags describe the relevant problem, technology, or conditions.
+Begin every lesson file with valid YAML frontmatter. Set `title` to a concise description, `date` to `yyyy-mm-dd`, `type` to exactly `failed` or `success`, `outdated` to a boolean, and `tags` to a YAML list of relevant problems, technologies, or conditions. Do not duplicate these fields in the Markdown body.
 
-In the note, explain the context and goal, attempted approach, observed result and evidence, known cause or remaining uncertainty, and what to repeat or avoid under which conditions. For a hard-won success, connect the earlier failed approaches to the verified solution and its reproducible verification. Preserve useful reasoning without copying terminal transcripts, secrets, or routine activity logs.
+In the Markdown body, explain the context and goal, attempted approach, observed result and evidence, known cause or remaining uncertainty, and what to repeat or avoid under which conditions. For a hard-won success, link the earlier failed lesson files, explain how they led to the solution, and include reproducible verification. Preserve useful reasoning without copying terminal transcripts, secrets, or routine activity logs.
 
 Create a lesson file only when there is a qualifying entry. Keep execution evidence in the active change as well; a lesson entry does not replace acceptance verification.
 
@@ -221,7 +222,7 @@ Apply approved `modify` and `remove` operations when the affected current requir
 
 If the target has changed since approval, a new ID now collides, or the change reveals an unapproved conflict, pause the affected merge. Resolve it within existing authorization where possible; ask only for a decision not already authorized. Preserve unrelated intervening changes.
 
-Use [assets/capability-spec.md](assets/capability-spec.md) for approved additions whose spec file does not exist, at the standalone or grouped path listed in the proposal.
+Use [references/capability-spec.md](references/capability-spec.md) for approved additions whose spec file does not exist, at the standalone or grouped path listed in the proposal.
 
 Merge by meaning, not by appending the whole change file.
 
