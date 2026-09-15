@@ -254,7 +254,7 @@ spawn-at-startup "wl-paste" "--watch" "rglauncher-clip-writer"
 spawn-at-startup  "awww-daemon"
 spawn-at-startup "gammastep" "-l" "50:120"
 
-spawn-at-startup "swayidle" "-w" "timeout" "600" "screenlock off" "before-sleep" "screenlock"
+spawn-at-startup "swayidle" "-w" "timeout" "600" "screenlock" "timeout" "605" "screenoff" "before-sleep" "screenlock"
 spawn-at-startup "screenlock" 
 
 // Uncomment this line to ask the clients to omit their client-side decorations if possible.

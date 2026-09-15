@@ -1,8 +1,3 @@
 #!/usr/bin/env bash
 
-pgrep -qf tile-lock || tile-lock --assets $HOME/files/media/pics/wallpapers/lock-tiles &
-
-if [ "$1" = "off" ]; then
-    sleep 5
-    niri msg action power-off-monitors
-fi
+tile-lock --assets $HOME/files/media/pics/wallpapers/lock-tiles &
