@@ -19,9 +19,13 @@
 (declare-function corfu-mode "corfu")
 (declare-function corfu-popupinfo-mode "corfu-popupinfo")
 (declare-function consult-xref "consult-xref")
+(declare-function eglot "eglot")
 (declare-function eglot-ensure "eglot")
+(declare-function eglot-managed-p "eglot")
 (declare-function eglot-code-actions "eglot")
 (declare-function eglot-rename "eglot")
+(declare-function xref-find-definitions "xref")
+(declare-function xref--read-identifier "xref")
 (defvar eglot-autoshutdown)
 (defvar eglot-sync-connect)
 (defvar eglot-events-buffer-config)
@@ -29,9 +33,27 @@
 (defvar eglot-code-action-indications)
 (defvar eglot-max-file-watches)
 (defvar eglot-ignored-server-capabilities)
+(defvar eglot-server-programs)
 (defvar chin/evil-leader-map)
 (defvar xref-show-xrefs-function)
 (declare-function evil-define-key "evil")
+(declare-function evil-define-key* "evil")
+
+(defun chin/enable-eglot-in-file-buffer ()
+  "Start Eglot in programming buffers that visit a file."
+  (when buffer-file-name
+    (eglot-ensure)))
+
+(defun chin/eglot-server-configured-p ()
+  "Return non-nil when `major-mode' has an Eglot server entry."
+  (catch 'configured
+    (dolist (entry eglot-server-programs)
+      (let ((modes (car entry)))
+        (unless (listp modes)
+          (setq modes (list modes)))
+        (dolist (mode modes)
+          (when (eq major-mode (if (consp mode) (car mode) mode))
+            (throw 'configured t)))))))
 
 (defvar-keymap chin/evil-code-map
   :doc "Leader bindings for code actions."
@@ -62,6 +84,7 @@
     (corfu-popupinfo-mode 1)))
 
 (add-hook 'prog-mode-hook #'chin/enable-corfu-in-file-buffer)
+(add-hook 'prog-mode-hook #'chin/enable-eglot-in-file-buffer)
 
 (with-eval-after-load 'xref
   ;; Keep xref navigation predictable in both Evil and regular states.
@@ -73,17 +96,23 @@
   (keymap-set xref--xref-buffer-mode-map "p" #'xref-prev-line)
   (keymap-set xref--xref-buffer-mode-map "q"
               #'xref-quit-and-pop-marker-stack)
-  (evil-define-key 'normal xref--xref-buffer-mode-map
-    (kbd "RET") #'xref-goto-xref
-    (kbd "<return>") #'xref-goto-xref
-    "n" #'xref-next-line
-    "p" #'xref-prev-line
-    "q" #'xref-quit-and-pop-marker-stack))
+  (with-eval-after-load 'evil
+    (evil-define-key 'normal xref--xref-buffer-mode-map
+      (kbd "RET") #'xref-goto-xref
+      (kbd "<return>") #'xref-goto-xref
+      "n" #'xref-next-line
+      "p" #'xref-prev-line
+      "q" #'xref-quit-and-pop-marker-stack)))
+
+(with-eval-after-load 'evil
+  (evil-define-key* 'normal 'global
+    (kbd "g d") #'xref-find-definitions
+    (kbd "M-.") #'xref-find-definitions))
 
 (with-eval-after-load 'eglot
   ;; Covers both `chin/dev-mode' and `SPC c a/r' autoload.
   (setq eglot-autoshutdown t
-        eglot-sync-connect nil
+        eglot-sync-connect 3
         eglot-events-buffer-config '(:size 0 :format short)
         eglot-report-progress nil
         eglot-code-action-indications nil
@@ -94,7 +123,20 @@
         '(:documentOnTypeFormattingProvider
           :inlayHintProvider
           :documentHighlightProvider
-          :semanticTokensProvider)))
+          :semanticTokensProvider))
+  (add-to-list
+   'eglot-server-programs
+   '((c-mode c-ts-mode c++-mode c++-ts-mode objc-mode)
+     . ("clangd" "--background-index" "--clang-tidy")))
+  (add-to-list
+   'eglot-server-programs
+   '((python-mode python-ts-mode)
+     . ("uvx" "--from" "python-lsp-server" "pylsp")))
+  (add-to-list
+   'eglot-server-programs
+   '((go-mode go-dot-mod-mode go-dot-work-mode
+      go-ts-mode go-mod-ts-mode go-work-ts-mode)
+     . ("gopls"))))
 
 (autoload #'consult-xref "consult-xref" nil t)
 (setq xref-show-xrefs-function #'consult-xref)

@@ -96,11 +96,15 @@ Keep the selected faces transparent on TTY frames."
       (kbd "SPC") chin/evil-leader-map
       (kbd "C-e") #'end-of-line
       (kbd "C-r") #'isearch-backward
-      (kbd "g d") #'xref-find-definitions
+      (kbd "g d") (if (fboundp 'chin/eglot-find-definitions)
+                       #'chin/eglot-find-definitions
+                     #'xref-find-definitions)
       (kbd "g r") #'xref-find-references
       (kbd "K") #'eldoc-doc-buffer
       (kbd "U") #'evil-redo
-      (kbd "M-.") #'xref-find-definitions)
+      (kbd "M-.") (if (fboundp 'chin/eglot-find-definitions)
+                       #'chin/eglot-find-definitions
+                     #'xref-find-definitions))
     (evil-define-key* 'visual 'global
       (kbd "DEL") #'delete-region)
     (setq chin/evil-initialized t)))
