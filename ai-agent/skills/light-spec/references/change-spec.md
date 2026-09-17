@@ -38,7 +38,7 @@ Then <observable result>
 
 <Use None for a pure refactor; otherwise repeat the following entry for each requirement change.>
 
-### <spec-key>/R1 — <requirement name>
+### <spec-key>/R-<meaningful-kebab-slug>
 
 Operation: <add | modify | remove>
 

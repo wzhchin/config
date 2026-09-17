@@ -1,11 +1,20 @@
 ---
 name: light-spec
-description: Carry an approved change through test-first implementation or behavior-preserving refactors and fresh verification. Maintain current specs, active and completed changes, and reusable lessons under docs/. Use when explicitly requested or when the user is starting a new project or building an application from scratch. Recommended for defining the initial scope and acceptance criteria before implementation.
+description: Initialize or maintain lightweight project specifications, change records, and reusable lessons under docs/. Use when explicitly requested or when starting a new project or application. In a repository already using Light Spec, also use for requested behavior changes or behavior-preserving refactors that need a change spec, for continuing an active change, and when task work produces a qualifying failed-attempt or hard-won-success lesson.
 ---
 
 # Light Spec
 
 Turn one approved change into verified code and current specifications.
+
+## When to use
+
+Use this skill in two phases:
+
+- **Initialization:** Use it when explicitly requested, when starting a new project, or when building an application from scratch and lightweight project specifications would establish the initial scope and acceptance criteria.
+- **Ongoing work:** When a repository already uses the Light Spec layout, use it without requiring another explicit mention when a requested behavior change, removal, or behavior-preserving refactor should create or continue a change spec; also use it when the current task produces a lesson that qualifies under **Record lessons while working**.
+
+Existing `docs/specs/`, `docs/changes/`, `docs/lessons-learned/`, or `docs/constitution.md` is evidence that the repository already uses Light Spec. Do not activate ongoing change-spec work for answer-only, read-only, or status requests that do not propose or authorize a product or code change. Do not create empty change or lesson records merely because the layout exists.
 
 ## Keep project documents under docs
 
@@ -29,7 +38,7 @@ Keep `docs/specs/` as the source of truth for verified current behavior. Use a s
 
 Keep canonical specs compact: each contains only current requirements. Purpose, non-goals, user stories, acceptance scenarios, and boundary analysis belong to change records under `docs/changes/`. When a verified boundary outcome remains part of current behavior, express it as its own requirement rather than copying the change's boundary analysis or Given-When-Then scenario.
 
-A spec key is its path relative to `docs/specs/` without `.md`: `login` or `accounts/login`. Inside a spec, identify requirements as `R1`, `R2`, and so on. Outside that file, reference them with the full key, such as `accounts/login/R1`, to distinguish topics with the same leaf name. Keep existing IDs and spec locations unless the approved change requires changing them.
+A spec key is its path relative to `docs/specs/` without `.md`: `login` or `accounts/login`. In a persistent spec, identify each requirement as `R-<kebab-slug>`, such as `R-valid-credentials`; the slug itself expresses the requirement's meaning, so do not append a separate requirement name. Do not use numbered identifiers such as `R1`. Outside that file, reference it with the full key, such as `accounts/login/R-valid-credentials`, to distinguish topics with the same leaf name. Keep existing identifiers and spec locations unless the approved change requires changing them.
 
 Keep active proposals and evidence in `docs/changes/now/<change-slug>/spec.md`. After verification and merge review, move the entire change directory to `docs/changes/ended/<change-slug>/`, preserving its contents. Ended changes describe past work; current behavior belongs in `docs/specs/`.
 
@@ -85,7 +94,7 @@ Split distinct observable outcomes into separate requirements instead of nesting
 
 Give every requirement change at least one acceptance scenario and reference its `US1/S1` ID.
 
-For each requirement change, identify its spec key, operation (`add`, `modify`, or `remove`), target requirement, related user stories, and acceptance scenarios. Reference requirements as `<spec-key>/R1`; keep existing IDs and allocate unused IDs for additions. Story and acceptance-scenario IDs are local to their change document.
+For each requirement change, identify its spec key, operation (`add`, `modify`, or `remove`), target requirement, related user stories, and acceptance scenarios. Reference persistent requirements as `<spec-key>/R-<kebab-slug>`. Keep existing identifiers and choose an unused descriptive slug for each addition. Story and acceptance-scenario IDs are local to their change document.
 
 For `modify` or `remove`, copy the exact current requirement sentence under `Before`. For `add`, use `Before: None`. This baseline identifies the approved replacement and lets the merge detect later changes.
 
