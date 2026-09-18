@@ -24,8 +24,8 @@ Use this layout relative to the project root, creating files and directories onl
 docs/
 ├── constitution.md
 ├── changes/
-│   ├── now/<change-slug>/spec.md
-│   └── ended/<change-slug>/spec.md
+│   ├── now/<yyyy-mm-dd>-<change-slug>/proposal.md
+│   └── ended/<yyyy-mm-dd>-<change-slug>/proposal.md
 ├── specs/
 │   ├── <slug>.md
 │   └── <big-slug>/<slug>.md
@@ -40,7 +40,7 @@ Keep canonical specs compact: each contains only current requirements. Purpose, 
 
 A spec key is its path relative to `docs/specs/` without `.md`: `login` or `accounts/login`. In a persistent spec, identify each requirement as `R-<kebab-slug>`, such as `R-valid-credentials`; the slug itself expresses the requirement's meaning, so do not append a separate requirement name. Do not use numbered identifiers such as `R1`. Outside that file, reference it with the full key, such as `accounts/login/R-valid-credentials`, to distinguish topics with the same leaf name. Keep existing identifiers and spec locations unless the approved change requires changing them.
 
-Keep active proposals and evidence in `docs/changes/now/<change-slug>/spec.md`. After verification and merge review, move the entire change directory to `docs/changes/ended/<change-slug>/`, preserving its contents. Ended changes describe past work; current behavior belongs in `docs/specs/`.
+Keep active proposals and evidence in `docs/changes/now/<yyyy-mm-dd>-<change-slug>/proposal.md`, using the proposal's creation date. After verification and merge review, move the entire change directory to `docs/changes/ended/<yyyy-mm-dd>-<change-slug>/`, preserving its contents. Ended changes describe past work; current behavior belongs in `docs/specs/`.
 
 Keep each reusable failed attempt or instructive success in its own Markdown file under `docs/lessons-learned/<topic-slug>/`. Store searchable metadata in YAML frontmatter and explanation and evidence in the Markdown body. The optional `docs/constitution.md` contains only project-specific constraints.
 
@@ -60,7 +60,7 @@ Ask one blocking question at a time.
 
 Mark unresolved high-impact information as `[NEEDS CLARIFICATION: <question>]`.
 
-Prepare the complete proposal in the conversation or in `docs/changes/now/<change-slug>/spec.md` with `Status: draft`. Before approval, file edits are limited to this proposal and factual lesson entries from authorized investigation; preserve other active changes.
+Prepare the complete proposal in the conversation or in `docs/changes/now/<yyyy-mm-dd>-<change-slug>/proposal.md` with `Status: draft`. Before approval, file edits are limited to this proposal and factual lesson entries from authorized investigation; preserve other active changes.
 
 Obtain approval for the complete scope before implementation. Reuse explicit approval already given for that scope, including approval of a final revision; a new turn or workflow stage does not require renewed approval.
 
@@ -74,7 +74,7 @@ Do not start implementation while an unresolved clarification remains. Use clari
 
 Use [references/change-spec.md](references/change-spec.md) as the change format.
 
-Use a short kebab-case change slug that is unused in both `docs/changes/now/` and `docs/changes/ended/`, unless continuing the same active change.
+Name a new change directory `<yyyy-mm-dd>-<change-slug>`, using the proposal's creation date and a short kebab-case slug. The full directory name must be unused in both `docs/changes/now/` and `docs/changes/ended/`, unless continuing the same active change.
 
 Use short kebab-case names for spec topics, larger capability groups, lesson topics, and lesson slugs. List the exact affected spec file paths in the proposal.
 
@@ -118,7 +118,7 @@ Do not put implementation details, architecture, task lists, or terminal transcr
 
 Replace instructional placeholders before requesting approval; verification evidence may remain `Pending` until execution.
 
-After approval, create or update the proposal at `docs/changes/now/<change-slug>/spec.md` with `Status: approved`, without overwriting another active change. Include its eventual move to `docs/changes/ended/<change-slug>/` in the approved scope.
+After approval, create or update the proposal at `docs/changes/now/<yyyy-mm-dd>-<change-slug>/proposal.md` with `Status: approved`, without overwriting another active change. Include its eventual move to `docs/changes/ended/<yyyy-mm-dd>-<change-slug>/` in the approved scope.
 
 Create the approved `docs/constitution.md` only when it is missing.
 
@@ -249,7 +249,7 @@ Review the merged specs against the verified behavior.
 
 ## Archive the completed change
 
-After verification and merge review pass, finish any qualifying lesson entries and set the change spec to `Status: completed`. Move the exact `docs/changes/now/<change-slug>/` directory to `docs/changes/ended/<change-slug>/`; preserve the spec, evidence, and any supporting files.
+After verification and merge review pass, finish any qualifying lesson entries and set the change spec to `Status: completed`. Move the exact `docs/changes/now/<yyyy-mm-dd>-<change-slug>/` directory to `docs/changes/ended/<yyyy-mm-dd>-<change-slug>/`; preserve the proposal, evidence, and any supporting files.
 
 Check the destination before moving and never overwrite an existing ended change. If it is occupied, keep the active change and resolve a distinct destination within the authorized scope. Keep blocked or unverified changes under `now/`.
 

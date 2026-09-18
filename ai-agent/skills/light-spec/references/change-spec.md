@@ -2,7 +2,7 @@
 
 Status: draft
 
-Archive: Move `docs/changes/now/<change-slug>/` to `docs/changes/ended/<change-slug>/` after verification and merge review pass, preserving this spec and its evidence.
+Archive: Move `docs/changes/now/<yyyy-mm-dd>-<change-slug>/` to `docs/changes/ended/<yyyy-mm-dd>-<change-slug>/` after verification and merge review pass, preserving this proposal and its evidence.
 
 ## Purpose
 
