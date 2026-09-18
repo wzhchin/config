@@ -16,6 +16,8 @@ Use this skill in two phases:
 
 Existing `docs/specs/`, `docs/changes/`, `docs/lessons-learned/`, or `docs/constitution.md` is evidence that the repository already uses Light Spec. Do not activate ongoing change-spec work for answer-only, read-only, or status requests that do not propose or authorize a product or code change. Do not create empty change or lesson records merely because the layout exists.
 
+For requested initialization, run `scripts/light-spec-init.sh [project-directory]`. It uses the containing Git repository root when available, otherwise the given directory or current directory. The script creates the required `docs/` directories and adds an idempotent Light Spec prompt to existing root-level `AGENTS.md` and `CLAUDE.md` files; it does not create either instruction file when absent.
+
 ## Keep project documents under docs
 
 Use this layout relative to the project root, creating files and directories only when needed:
