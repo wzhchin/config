@@ -1,6 +1,6 @@
 ---
 name: light-spec
-description: Initialize or maintain lightweight project specifications, change records, and reusable lessons under docs/. Use when explicitly requested or when starting a new project or application. In a repository already using Light Spec, also use for requested behavior changes or behavior-preserving refactors that need a change spec, for continuing an active change, and when task work produces a qualifying failed-attempt or hard-won-success lesson.
+description: Initialize or maintain lightweight project specifications, change records, and reusable lessons under docs/. Use when explicitly requested or when starting a new project or application. In a repository already using Light Spec, also use for requested behavior changes or behavior-preserving refactors that need a change spec, for continuing an active change, and when task work produces a qualifying reusable lesson.
 ---
 
 # Light Spec
@@ -33,7 +33,7 @@ docs/
 │   └── <big-slug>/<slug>.md
 └── lessons-learned/
     └── <topic-slug>/
-        └── <yyyy-mm-dd>-<lesson-slug>.md
+        └── [outdated-]<failed-or-success>-<yyyy-mm-dd>-<attempt-slug>.md
 ```
 
 Keep `docs/specs/` as the source of truth for verified current behavior. Use a single `docs/specs/<slug>.md` for a small, self-contained topic. Group related topics under `docs/specs/<big-slug>/<slug>.md` when they belong to a larger capability; do not create a directory for every small spec.
@@ -44,7 +44,7 @@ A spec key is its path relative to `docs/specs/` without `.md`: `login` or `acco
 
 Keep active proposals and evidence in `docs/changes/now/<yyyy-mm-dd>-<change-slug>/proposal.md`, using the proposal's creation date. After verification and merge review, move the entire change directory to `docs/changes/ended/<yyyy-mm-dd>-<change-slug>/`, preserving its contents. Ended changes describe past work; current behavior belongs in `docs/specs/`.
 
-Keep each reusable failed attempt or instructive success in its own Markdown file under `docs/lessons-learned/<topic-slug>/`. Store searchable metadata in YAML frontmatter and explanation and evidence in the Markdown body. The optional `docs/constitution.md` contains only project-specific constraints.
+Keep each concrete problem or task in its own `docs/lessons-learned/<topic-slug>/` directory and each qualifying attempt in its own Markdown file. Encode whether the attempt failed or succeeded, when its result was confirmed, whether it is outdated, and the attempted method in the filename; do not duplicate that metadata in the file. The optional `docs/constitution.md` contains only project-specific constraints.
 
 ## Preserve the approval gate
 
@@ -78,7 +78,7 @@ Use [references/change-spec.md](references/change-spec.md) as the change format.
 
 Name a new change directory `<yyyy-mm-dd>-<change-slug>`, using the proposal's creation date and a short kebab-case slug. The full directory name must be unused in both `docs/changes/now/` and `docs/changes/ended/`, unless continuing the same active change.
 
-Use short kebab-case names for spec topics, larger capability groups, lesson topics, and lesson slugs. List the exact affected spec file paths in the proposal.
+Use short kebab-case names for spec topics, larger capability groups, lesson topics, and attempt slugs. List the exact affected spec file paths in the proposal.
 
 State one change purpose with one goal and its user value. For a pure refactor, state the improvement and the behavior that must remain unchanged.
 
@@ -196,15 +196,13 @@ Reject “testing is difficult” and “time is short” as exception reasons.
 
 ## Record lessons while working
 
-Use [references/lessons-learned.md](references/lessons-learned.md) when creating `docs/lessons-learned/<topic-slug>/<yyyy-mm-dd>-<lesson-slug>.md`. Create one file per qualifying lesson. Use the date when the outcome became known and a short kebab-case slug that describes the lesson. If that path already exists, choose a more specific slug; never overwrite another lesson.
+Use [references/lessons-learned.md](references/lessons-learned.md) when creating `docs/lessons-learned/<topic-slug>/[outdated-]<failed-or-success>-<yyyy-mm-dd>-<attempt-slug>.md`. Use a topic slug that describes one concrete problem or task and an attempt slug that describes the method tried. Set the outcome to `failed` or `success` and use the date when that result was confirmed. Multiple attempts may share a date, but every full path must be unique; choose a more specific attempt slug rather than overwriting another note.
 
-Record failed approaches and meaningful trial-and-error when their outcomes are known. Keep the failed entries even when a later approach succeeds. Record a `success` when the solution required substantial investigation or repeated attempts, or offers a reusable technique. Routine first-try successes and expected RED test failures do not require lesson entries.
+Record a failed or successful attempt when it produces reusable knowledge. Keep failed notes when a later approach succeeds. Do not record routine activity with no reusable lesson or expected RED test failures.
 
-Begin every lesson file with valid YAML frontmatter. Set `title` to a concise description, `date` to `yyyy-mm-dd`, `type` to exactly `failed` or `success`, `outdated` to a boolean, and `tags` to a YAML list of relevant problems, technologies, or conditions. Do not duplicate these fields in the Markdown body.
+Do not add YAML frontmatter, a topic index, or fields that repeat metadata encoded by the path. Structure each note as Context and goal, Attempt, Outcome and evidence, Applicability, and Lesson. State the conditions under which the result applies, the evidence for the observed outcome, and what to repeat or avoid. Preserve useful reasoning without copying terminal transcripts, secrets, or routine activity logs.
 
-In the Markdown body, explain the context and goal, attempted approach, observed result and evidence, known cause or remaining uncertainty, and what to repeat or avoid under which conditions. For a hard-won success, link the earlier failed lesson files, explain how they led to the solution, and include reproducible verification. Preserve useful reasoning without copying terminal transcripts, secrets, or routine activity logs.
-
-Create a lesson file only when there is a qualifying entry. Keep execution evidence in the active change as well; a lesson entry does not replace acceptance verification.
+When a note is no longer applicable, keep its contents and rename it by adding the `outdated-` prefix. Update repository references to the renamed path. Keep execution evidence in the active change as well; a lesson note does not replace acceptance verification.
 
 ## Verify completion
 

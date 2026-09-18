@@ -82,4 +82,4 @@ Pending.
 
 ## Lessons learned
 
-<Link relevant files under docs/lessons-learned/<topic-slug>/<yyyy-mm-dd>-<lesson-slug>.md, or use None when there is no qualifying lesson.>
+<Link relevant files under docs/lessons-learned/<topic-slug>/[outdated-]<failed-or-success>-<yyyy-mm-dd>-<attempt-slug>.md, or use None when there is no qualifying lesson.>

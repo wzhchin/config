@@ -1,12 +1,3 @@
----
-title: "<short lesson title>"
-date: "<yyyy-mm-dd>"
-type: "<failed-or-success>"
-outdated: false
-tags:
-  - "<relevant-tag>"
----
-
 # Context and goal
 
 <Describe the situation, intended result, and conditions in which this lesson applies.>
@@ -19,6 +10,10 @@ tags:
 
 <Describe the observed result and concise supporting evidence.>
 
+# Applicability
+
+<Describe the versions, environments, dependencies, assumptions, or other conditions under which the result applies.>
+
 # Lesson
 
-<State the known cause or remaining uncertainty and what to repeat or avoid under which conditions. For a hard-won success, link the earlier failed lesson files, explain how they led to the solution, and include reproducible verification.>
+<State the known cause or remaining uncertainty and what to repeat or avoid.>
