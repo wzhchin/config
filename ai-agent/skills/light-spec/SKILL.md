@@ -124,6 +124,16 @@ After approval, create or update the proposal at `docs/changes/now/<yyyy-mm-dd>-
 
 Create the approved `docs/constitution.md` only when it is missing.
 
+## Commit a change
+
+Run the bundled [scripts/light-spec-commit](scripts/light-spec-commit) with the target Git repository as the current directory; use the script's path in this skill directory. Pass the change slug without its date prefix. The script derives `abbr` from the first letter of each slug word, so `user-login` becomes `ul`.
+
+As soon as the change spec is first created on disk, run `scripts/light-spec-commit start <slug>` before implementation. This applies whether the first on-disk proposal is draft or approved. The script requires a new or modified proposal under `docs/changes/now/` and commits it as `spec: <slug>(<abbr>) start`.
+
+For partial work, stage only the intended files and run `scripts/light-spec-commit snapshot <slug> [description]`. It commits the staged files as `<abbr>: <description>`; without a description, it uses `snapshot`. Use a specific description when one is available. Commit approval updates, implementation, tests, verification evidence, and canonical spec updates through snapshots as they occur.
+
+After completion verification, set the proposal to `Status: completed` and run `scripts/light-spec-commit end <slug>`. It requires that status, moves the change directory to `docs/changes/ended/`, and commits the move as `spec: <slug> finished`. It leaves unrelated staged changes out of the finished commit.
+
 ## Implement one vertical slice
 
 Use RED-GREEN-REFACTOR for new or changed behavior, including the observable outcome of a removal. For work that only preserves behavior, use the refactor path below.
@@ -249,7 +259,7 @@ Review the merged specs against the verified behavior.
 
 ## Archive the completed change
 
-After verification and merge review pass, finish any qualifying lesson entries and set the change spec to `Status: completed`. Move the exact `docs/changes/now/<yyyy-mm-dd>-<change-slug>/` directory to `docs/changes/ended/<yyyy-mm-dd>-<change-slug>/`; preserve the proposal, evidence, and any supporting files.
+After verification and merge review pass, finish any qualifying lesson entries, commit any final canonical spec updates in a snapshot, and set the change spec to `Status: completed`. Run `scripts/light-spec-commit end <change-slug>` to move the exact `docs/changes/now/<yyyy-mm-dd>-<change-slug>/` directory to `docs/changes/ended/<yyyy-mm-dd>-<change-slug>/` and commit it; preserve the proposal, evidence, and any supporting files.
 
 Check the destination before moving and never overwrite an existing ended change. If it is occupied, keep the active change and resolve a distinct destination within the authorized scope. Keep blocked or unverified changes under `now/`.
 
