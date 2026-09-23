@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+set -eu
+
+(( $# )) || { echo "usage: sleepuntil yyyy-mm-dd HH:MM" >&2; exit 1; }
+at="$*"
+target=$(date -d "$at" +%s)
+left=$(( target - $(date +%s) ))
+(( left > 0 )) || exit 0
+
+echo "sleep ${left}s until $(date -d "@$target" '+%F %T')"
+
+# sleep(1) counts awake time. Recheck the wall clock so suspend does not overshoot.
+while (( left > 0 )); do
+    sleep $(( left > 60 ? 60 : left ))
+    left=$(( target - $(date +%s) ))
+done

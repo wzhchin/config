@@ -120,11 +120,20 @@ pget-file() {
     esac
 }
 
+psha-name() {
+    local new_name=$(pass-chin show "$1" | grep user: | awk '{print $2}' | sha256sum | cut -b 1-4,11-14)
+    pass mv "$1" "${1%/*}/$new_name"
+}
+
 OP="${1:-fzf}"
 case "$OP" in
   fzf)
     [ $# -gt 1 ] && [ $1 = fzf ] && shift
     handle-fzf "$@"
+    ;;
+  sha)
+    shift
+    psha-name "$1"
     ;;
   pf)
     shift
