@@ -76,6 +76,10 @@ Do not start implementation while an unresolved clarification remains. Use clari
 
 Use [references/change-spec.md](references/change-spec.md) as the change format.
 
+Before drafting a new change, check both `docs/changes/now/` and the current branch's Git history for unfinished changes. Read available proposals under `now/`. In history, match each `spec: <slug>(<abbr>) start` commit with a later `spec: <slug> finished` commit for the same change directory; use the changed paths to distinguish reused slugs. Treat a directory under `now/` or a start commit without a matching finish as unfinished. If the directory and history disagree, report the discrepancy instead of assuming the change is complete.
+
+If the request continues an unfinished change with an available proposal, use that proposal. If its proposal is missing, report the discrepancy and resolve it before continuing. If the request starts a different change while any unfinished change exists, tell the user which changes are unfinished before creating files and suggest using a separate Git worktree to continue the new change. Preserve the existing changes' files and commits.
+
 Name a new change directory `<yyyy-mm-dd>-<change-slug>`, using the proposal's creation date and a short kebab-case slug. The full directory name must be unused in both `docs/changes/now/` and `docs/changes/ended/`, unless continuing the same active change.
 
 Use short kebab-case names for spec topics, larger capability groups, lesson topics, and attempt slugs. List the exact affected spec file paths in the proposal.
