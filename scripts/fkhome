@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+set -eu
+
+PMD5=$(pwd | md5sum | awk '{print $1}')
+
+mkdir -p "/tmp/$PMD5"
+set -x
+source "$1"
+
+ARGS=(
+    --ro-bind /usr /usr
+    --ro-bind /etc /etc
+    --ro-bind /opt /opt
+    --symlink usr/bin /bin
+    --symlink usr/lib /lib
+    --symlink usr/lib64 /lib64
+    --proc /proc
+    --dev /dev
+    --dev-bind-try /dev/dri /dev/dri
+    --ro-bind-try /sys /sys
+    --tmpfs /tmp/$PMD5
+    --bind-try /tmp/.X11-unix /tmp/.X11-unix
+    --bind-try /run/dbus /run/dbus
+    --bind-try "$HOME/.cargo" /home/agent/.cargo
+    --bind "$PWD" /home/agent
+    --setenv HOME /home/agent
+    --setenv XDG_CONFIG_HOME /home/agent/.config
+    --setenv HTTP_PROXY "$CHIN_HTTP_PROXY" 
+    --setenv HTTPS_PROXY "$CHIN_HTTP_PROXY" 
+    --setenv PATH "/usr/local/sbin:/usr/local/bin:/usr/bin:/opt/android-ndk:/usr/lib/jvm/default/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl:/usr/lib/rustup/bin"
+    "${EXTRA_ARGS[@]}"
+)
+
+
+if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+    ARGS+=(--bind "$XDG_RUNTIME_DIR" "$XDG_RUNTIME_DIR")
+fi
+
+exec bwrap "${ARGS[@]}" zsh
