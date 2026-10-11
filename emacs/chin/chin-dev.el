@@ -16,8 +16,11 @@
 (defvar corfu-cycle)
 (defvar corfu-preview-current)
 (defvar corfu-quit-no-match)
+(defvar eldoc-idle-delay)
+(defvar eldoc-mode)
 (declare-function corfu-mode "corfu")
 (declare-function corfu-popupinfo-mode "corfu-popupinfo")
+(declare-function eldoc-pre-command-refresh-echo-area "eldoc")
 (declare-function consult-xref "consult-xref")
 (declare-function eglot "eglot")
 (declare-function eglot-ensure "eglot")
@@ -86,6 +89,16 @@
 (add-hook 'prog-mode-hook #'chin/enable-corfu-in-file-buffer)
 (add-hook 'prog-mode-hook #'chin/enable-eglot-in-file-buffer)
 
+;; ElDoc already waits half a second before fetching new documentation, but
+;; reprints the previous message immediately before every motion command.
+;; Let the echo area stay quiet while moving and show the new text on idle.
+(setq eldoc-idle-delay 0.5)
+(defun chin/eldoc-disable-pre-command-refresh ()
+  "Avoid refreshing the previous ElDoc message during cursor motion."
+  (when (and eldoc-mode (derived-mode-p 'prog-mode))
+    (remove-hook 'pre-command-hook #'eldoc-pre-command-refresh-echo-area t)))
+(add-hook 'eldoc-mode-hook #'chin/eldoc-disable-pre-command-refresh)
+
 (with-eval-after-load 'xref
   ;; Keep xref navigation predictable in both Evil and regular states.
   ;; Bind both return events because terminal and GUI frames can produce
@@ -149,6 +162,7 @@
   (corfu-mode 1)
   (require 'eglot)
   (eglot-ensure)
+  (chin/eldoc-disable-pre-command-refresh)
   (message "Development mode enabled"))
 
 ;; Keep the requested M-x name while retaining the configuration's `chin/'
