@@ -170,17 +170,17 @@ Keep the selected faces transparent on TTY frames."
 ;; Read interaction bindings now; their packages load when invoked.
 (require 'chin-first-call)
 
-;; Keep the lightweight editor path free of development packages while making
-;; `dev-mode' available as an on-demand upgrade.
-(autoload #'dev-mode "chin-dev"
-          "Enable development tools in the current programming buffer." t)
+;; Keep the lightweight editor path free of semantic packages while making
+;; the explicit enable command available on demand.
+(autoload #'chin-sense "chin-sense"
+          "Enable semantic tools in the current programming buffer." t)
 
-(defun chin/command-line-dev (_switch)
-  "Load development configuration for the `--chin-dev' switch."
-  (require 'chin-dev))
+(defun chin/command-line-sense (_switch)
+  "Load semantic configuration for the `--chin-sense' switch."
+  (require 'chin-sense))
 
 (add-to-list 'command-switch-alist
-             '("--chin-dev" . chin/command-line-dev))
+             '("--chin-sense" . chin/command-line-sense))
 
 ;;; Confirmation prompts and symbolic links
 ;; These variables are consumed directly at runtime; `setopt' only adds an

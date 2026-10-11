@@ -1,8 +1,8 @@
-;;; chin-dev.el --- Development configuration  -*- lexical-binding: t; -*-
+;;; chin-sense.el --- Semantic tools for programming buffers  -*- lexical-binding: t; -*-
 
 ;;; Commentary:
-;; Development tooling is loaded explicitly by `eee' or on demand through
-;; `dev-mode'.
+;; Semantic tools are loaded explicitly by `eee' through `--chin-sense',
+;; or on demand through `chin-sense'.
 
 ;;; Code:
 
@@ -128,19 +128,15 @@
     (kbd "g d") #'xref-find-definitions
     (kbd "M-.") #'xref-find-definitions))
 
-(defun chin/dev-mode ()
-  "Enable development tools in the current programming buffer."
+(defun chin-sense ()
+  "Enable semantic tools in the current programming buffer."
   (interactive)
   (unless (derived-mode-p 'prog-mode)
-    (user-error "Dev mode is only available in programming buffers"))
+    (user-error "Semantic tools are only available in programming buffers"))
   (corfu-mode 1)
   (eglot-ensure)
   (chin/eldoc-disable-pre-command-refresh)
-  (message "Development mode enabled"))
+  (message "Semantic tools enabled"))
 
-;; Keep the requested M-x name while retaining the configuration's `chin/'
-;; namespace for the implementation.
-(defalias 'dev-mode #'chin/dev-mode)
-
-(provide 'chin-dev)
-;;; chin-dev.el ends here
+(provide 'chin-sense)
+;;; chin-sense.el ends here

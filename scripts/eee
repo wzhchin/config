@@ -7,6 +7,6 @@ if [ "$1" = '-k' ]; then
 fi
 
 emacsclient -nw -c -s "$IDX" "$@" || {
-    emacs --bg-daemon="$IDX" --chin-dev &&
+    emacs --bg-daemon="$IDX" --chin-sense &&
         emacsclient -nw -c -s "$IDX" "$@"
 }
