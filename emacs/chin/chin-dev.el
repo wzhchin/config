@@ -6,124 +6,56 @@
 
 ;;; Code:
 
-(defun chin/enable-corfu-in-file-buffer ()
-  "Enable Corfu in programming buffers that visit a file."
-  (when buffer-file-name
-    (corfu-mode 1)))
+(require 'use-package)
 
-(defvar corfu-auto)
-(defvar corfu-auto-delay)
-(defvar corfu-cycle)
-(defvar corfu-preview-current)
-(defvar corfu-quit-no-match)
-(defvar eldoc-idle-delay)
-(defvar eldoc-mode)
-(declare-function corfu-mode "corfu")
-(declare-function corfu-popupinfo-mode "corfu-popupinfo")
-(declare-function eldoc-pre-command-refresh-echo-area "eldoc")
-(declare-function consult-xref "consult-xref")
-(declare-function eglot "eglot")
-(declare-function eglot-ensure "eglot")
-(declare-function eglot-managed-p "eglot")
-(declare-function eglot-code-actions "eglot")
-(declare-function eglot-rename "eglot")
-(declare-function xref-find-definitions "xref")
-(declare-function xref--read-identifier "xref")
-(defvar eglot-autoshutdown)
-(defvar eglot-sync-connect)
-(defvar eglot-events-buffer-config)
-(defvar eglot-report-progress)
-(defvar eglot-code-action-indications)
-(defvar eglot-max-file-watches)
-(defvar eglot-ignored-server-capabilities)
-(defvar eglot-server-programs)
-(defvar chin/evil-leader-map)
-(defvar xref-show-xrefs-function)
-(declare-function evil-define-key "evil")
-(declare-function evil-define-key* "evil")
+;;; Documentation
 
-(defun chin/enable-eglot-in-file-buffer ()
-  "Start Eglot in programming buffers that visit a file."
-  (when buffer-file-name
-    (eglot-ensure)))
+(use-package eldoc
+  :demand t
+  :preface
+  (defun chin/eldoc-disable-pre-command-refresh ()
+    "Avoid refreshing the previous ElDoc message during cursor motion."
+    (when (and eldoc-mode (derived-mode-p 'prog-mode))
+      (remove-hook 'pre-command-hook #'eldoc-pre-command-refresh-echo-area t)))
+  :hook (eldoc-mode . chin/eldoc-disable-pre-command-refresh)
+  :config
+  ;; ElDoc waits half a second for new documentation, but otherwise reprints
+  ;; the previous message immediately before every motion command.
+  (setq eldoc-idle-delay 0.5))
 
-(defun chin/eglot-server-configured-p ()
-  "Return non-nil when `major-mode' has an Eglot server entry."
-  (catch 'configured
-    (dolist (entry eglot-server-programs)
-      (let ((modes (car entry)))
-        (unless (listp modes)
-          (setq modes (list modes)))
-        (dolist (mode modes)
-          (when (eq major-mode (if (consp mode) (car mode) mode))
-            (throw 'configured t)))))))
+;;; Completion
 
-(defvar-keymap chin/evil-code-map
-  :doc "Leader bindings for code actions."
-  "a" #'eglot-code-actions
-  "r" #'eglot-rename)
+(use-package corfu
+  :demand t
+  :preface
+  (defun chin/enable-corfu-in-file-buffer ()
+    "Enable Corfu in programming buffers that visit a file."
+    (when buffer-file-name
+      (corfu-mode 1)))
+  :hook (prog-mode . chin/enable-corfu-in-file-buffer)
+  :config
+  (setq corfu-auto t
+        corfu-auto-delay 0.2
+        corfu-cycle t
+        corfu-preview-current nil
+        corfu-quit-no-match 'separator)
+  ;; Emacs 31 can render Corfu's popup info in TTY child frames.
+  (use-package corfu-popupinfo
+    :if (and (not (display-graphic-p)) (featurep 'tty-child-frames))
+    :demand t
+    :config (corfu-popupinfo-mode 1)))
 
-(with-eval-after-load 'chin-start
-  (keymap-set chin/evil-leader-map "c" chin/evil-code-map))
+;;; Language server
 
-(defvar xref--xref-buffer-mode-map)
-(declare-function xref-goto-xref "xref")
-(declare-function xref-next-line "xref")
-(declare-function xref-prev-line "xref")
-(declare-function xref-quit-and-pop-marker-stack "xref")
-
-(setq corfu-auto t
-      corfu-auto-delay 0.2
-      corfu-cycle t
-      corfu-preview-current nil
-      corfu-quit-no-match 'separator)
-(autoload #'corfu-mode "corfu" nil t)
-
-;; Emacs 31 can render Corfu's popup info in TTY child frames.
-(with-eval-after-load 'corfu
-  (when (and (not (display-graphic-p))
-             (featurep 'tty-child-frames)
-             (require 'corfu-popupinfo nil t))
-    (corfu-popupinfo-mode 1)))
-
-(add-hook 'prog-mode-hook #'chin/enable-corfu-in-file-buffer)
-(add-hook 'prog-mode-hook #'chin/enable-eglot-in-file-buffer)
-
-;; ElDoc already waits half a second before fetching new documentation, but
-;; reprints the previous message immediately before every motion command.
-;; Let the echo area stay quiet while moving and show the new text on idle.
-(setq eldoc-idle-delay 0.5)
-(defun chin/eldoc-disable-pre-command-refresh ()
-  "Avoid refreshing the previous ElDoc message during cursor motion."
-  (when (and eldoc-mode (derived-mode-p 'prog-mode))
-    (remove-hook 'pre-command-hook #'eldoc-pre-command-refresh-echo-area t)))
-(add-hook 'eldoc-mode-hook #'chin/eldoc-disable-pre-command-refresh)
-
-(with-eval-after-load 'xref
-  ;; Keep xref navigation predictable in both Evil and regular states.
-  ;; Bind both return events because terminal and GUI frames can produce
-  ;; different events for the same physical key.
-  (keymap-set xref--xref-buffer-mode-map "RET" #'xref-goto-xref)
-  (keymap-set xref--xref-buffer-mode-map "<return>" #'xref-goto-xref)
-  (keymap-set xref--xref-buffer-mode-map "n" #'xref-next-line)
-  (keymap-set xref--xref-buffer-mode-map "p" #'xref-prev-line)
-  (keymap-set xref--xref-buffer-mode-map "q"
-              #'xref-quit-and-pop-marker-stack)
-  (with-eval-after-load 'evil
-    (evil-define-key 'normal xref--xref-buffer-mode-map
-      (kbd "RET") #'xref-goto-xref
-      (kbd "<return>") #'xref-goto-xref
-      "n" #'xref-next-line
-      "p" #'xref-prev-line
-      "q" #'xref-quit-and-pop-marker-stack)))
-
-(with-eval-after-load 'evil
-  (evil-define-key* 'normal 'global
-    (kbd "g d") #'xref-find-definitions
-    (kbd "M-.") #'xref-find-definitions))
-
-(with-eval-after-load 'eglot
-  ;; Covers both `chin/dev-mode' and `SPC c a/r' autoload.
+(use-package eglot
+  :demand t
+  :preface
+  (defun chin/enable-eglot-in-file-buffer ()
+    "Start Eglot in programming buffers that visit a file."
+    (when buffer-file-name
+      (eglot-ensure)))
+  :hook (prog-mode . chin/enable-eglot-in-file-buffer)
+  :config
   (setq eglot-autoshutdown t
         eglot-sync-connect 3
         eglot-events-buffer-config '(:size 0 :format short)
@@ -149,10 +81,52 @@
    'eglot-server-programs
    '((go-mode go-dot-mod-mode go-dot-work-mode
       go-ts-mode go-mod-ts-mode go-work-ts-mode)
-     . ("gopls"))))
+     . ("gopls")))
+  (defun chin/eglot-server-configured-p ()
+    "Return non-nil when `major-mode' has an Eglot server entry."
+    (catch 'configured
+      (dolist (entry eglot-server-programs)
+        (let ((modes (car entry)))
+          (unless (listp modes)
+            (setq modes (list modes)))
+          (dolist (mode modes)
+            (when (eq major-mode (if (consp mode) (car mode) mode))
+              (throw 'configured t))))))))
 
-(autoload #'consult-xref "consult-xref" nil t)
-(setq xref-show-xrefs-function #'consult-xref)
+;;; Navigation and keys
+
+(use-package xref
+  :demand t
+  :config
+  (use-package consult-xref
+    :demand t
+    :config (setq xref-show-xrefs-function #'consult-xref))
+  ;; Bind both return events because terminal and GUI frames can produce
+  ;; different events for the same physical key.
+  (keymap-set xref--xref-buffer-mode-map "RET" #'xref-goto-xref)
+  (keymap-set xref--xref-buffer-mode-map "<return>" #'xref-goto-xref)
+  (keymap-set xref--xref-buffer-mode-map "n" #'xref-next-line)
+  (keymap-set xref--xref-buffer-mode-map "p" #'xref-prev-line)
+  (keymap-set xref--xref-buffer-mode-map "q"
+              #'xref-quit-and-pop-marker-stack))
+
+(use-package evil
+  :demand t
+  :config
+  (defvar-keymap chin/evil-code-map
+    :doc "Leader bindings for code actions."
+    "a" #'eglot-code-actions
+    "r" #'eglot-rename)
+  (keymap-set chin/evil-leader-map "c" chin/evil-code-map)
+  (evil-define-key 'normal xref--xref-buffer-mode-map
+    (kbd "RET") #'xref-goto-xref
+    (kbd "<return>") #'xref-goto-xref
+    "n" #'xref-next-line
+    "p" #'xref-prev-line
+    "q" #'xref-quit-and-pop-marker-stack)
+  (evil-define-key* 'normal 'global
+    (kbd "g d") #'xref-find-definitions
+    (kbd "M-.") #'xref-find-definitions))
 
 (defun chin/dev-mode ()
   "Enable development tools in the current programming buffer."
@@ -160,7 +134,6 @@
   (unless (derived-mode-p 'prog-mode)
     (user-error "Dev mode is only available in programming buffers"))
   (corfu-mode 1)
-  (require 'eglot)
   (eglot-ensure)
   (chin/eldoc-disable-pre-command-refresh)
   (message "Development mode enabled"))
