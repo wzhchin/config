@@ -1,7 +1,7 @@
 ;;; chin-idle.el --- Idle configuration  -*- lexical-binding: t; -*-
 
 ;;; Commentary:
-;; Load visual feedback as soon as Emacs becomes idle.
+;; Read during startup; each feature chooses its own idle delay.
 
 ;;; Code:
 

@@ -1,8 +1,8 @@
 ;;; chin-first-call.el --- First-command configuration  -*- lexical-binding: t; -*-
 
 ;;; Commentary:
-;; Load the remaining interactive features immediately before the first
-;; command, while keeping their heavier implementations autoloaded.
+;; Register interactive bindings during startup. Load their heavier packages
+;; only when the corresponding command is used.
 
 ;;; Code:
 
@@ -31,15 +31,16 @@
                 (_ " TODO "))))))
 
 (with-eval-after-load 'markdown-ts-mode
-  ;; Evil handles TAB as C-i in normal state, hiding Markdown's Org-like
-  ;; outline cycling.  Bind both terminal and GUI Tab events mode-locally.
-  (evil-define-key 'normal markdown-ts-mode-map
-    (kbd "TAB") #'markdown-ts-outline-cycle
-    (kbd "<tab>") #'markdown-ts-outline-cycle)
-  (keymap-set markdown-ts-mode-map "C-c ."
-              #'chin/markdown-insert-timestamp)
-  (keymap-set markdown-ts-mode-map "C-c C-t"
-              #'chin/markdown-cycle-heading-todo))
+  (with-eval-after-load 'evil
+    ;; Evil handles TAB as C-i in normal state, hiding Markdown's Org-like
+    ;; outline cycling. Bind both terminal and GUI Tab events mode-locally.
+    (evil-define-key 'normal markdown-ts-mode-map
+      (kbd "TAB") #'markdown-ts-outline-cycle
+      (kbd "<tab>") #'markdown-ts-outline-cycle)
+    (keymap-set markdown-ts-mode-map "C-c ."
+                #'chin/markdown-insert-timestamp)
+    (keymap-set markdown-ts-mode-map "C-c C-t"
+                #'chin/markdown-cycle-heading-todo)))
 
 (declare-function evil-define-key* "evil")
 (declare-function evil-local-set-key "evil")
@@ -168,18 +169,30 @@ own `%', `*', and `:' prefix maps instead of copying their commands."
     "ZQ" #'wdired-abort-changes))
 
 (with-eval-after-load 'dired
-  (chin/evil-setup-dired)
-  (add-hook 'dired-mode-hook #'chin/dired-bind-open t)
-  (add-hook 'evil-local-mode-hook #'chin/dired-bind-open))
+  (with-eval-after-load 'evil
+    (chin/evil-setup-dired)
+    (add-hook 'dired-mode-hook #'chin/dired-bind-open t)
+    (add-hook 'evil-local-mode-hook #'chin/dired-bind-open)))
 (with-eval-after-load 'wdired
-  (chin/evil-setup-wdired))
+  (with-eval-after-load 'evil
+    (chin/evil-setup-wdired)))
 
 (setq completion-styles '(substring partial-completion basic)
       completion-ignore-case t
       read-buffer-completion-ignore-case t
       read-file-name-completion-ignore-case t)
-(require 'vertico)
-(vertico-mode 1)
+
+;; Enable Vertico before the first completion prompt, including file prompts.
+;; Other minibuffer prompts do not need to load it.
+(defun chin/enable-vertico-on-demand (&rest _args)
+  "Enable Vertico when completion is first requested."
+  (advice-remove 'completing-read #'chin/enable-vertico-on-demand)
+  (advice-remove 'read-file-name #'chin/enable-vertico-on-demand)
+  (require 'vertico)
+  (vertico-mode 1))
+
+(advice-add 'completing-read :before #'chin/enable-vertico-on-demand)
+(advice-add 'read-file-name :before #'chin/enable-vertico-on-demand)
 
 (declare-function comment-dwim-2 "comment-dwim-2")
 (autoload #'comment-dwim-2 "comment-dwim-2" nil t)
@@ -197,8 +210,19 @@ own `%', `*', and `:' prefix maps instead of copying their commands."
         nil)
     t))
 
-(require 'point-stack)
-(point-stack-setup-advices)
+(defun chin/record-point-before-navigation (&rest _args)
+  "Load Point Stack on the first navigation and record the origin."
+  (require 'point-stack)
+  (point-stack-push))
+
+;; Match the navigation commands tracked by Point Stack without loading its
+;; implementation until one of them is used.
+(dolist (command '(isearch-mode find-function-do-it find-library
+                   imenu beginning-of-buffer end-of-buffer mouse-set-point
+                   xref-find-definitions counsel-imenu counsel-git-grep))
+  (advice-add command :before #'chin/record-point-before-navigation))
+(autoload #'point-stack-pop "point-stack" nil t)
+(autoload #'point-stack-forward-stack-pop "point-stack" nil t)
 (global-set-key (kbd "M-1") #'point-stack-pop)
 (global-set-key (kbd "M-2") #'point-stack-forward-stack-pop)
 
