@@ -119,6 +119,7 @@ alias mkp='mkdir -p'
 alias less="less -R"
 alias ap="realpath -s"
 alias rmi="trash"
+alias find1="find $PWD -maxdepth 1 -mindepth 1"
 
 mkpar() {
     local -a args

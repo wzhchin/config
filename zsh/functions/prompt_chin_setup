@@ -264,7 +264,7 @@ prompt_chin_precmd() {
     local environment_line=""
     (( $#environment_status )) && environment_line="${prompt_newline}${(j: :)environment_status}"
 
-    PROMPT_CHIN_TAIL="${environment_line}${prompt_newline}%F{red}%(!,%K{red}#%k,$) %b%f%k"
+    PROMPT_CHIN_TAIL="${environment_line}${prompt_newline}%F{red}%(!,%K{red}#%k,#) %b%f%k"
 
     PROMPT="${PROMPT_CHIN_HEAD}${PROMPT_CHIN_TAIL}"
 
