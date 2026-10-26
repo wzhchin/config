@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+
+title() {
+    echo "=> Cleaning $* <============================================"
+}
+
+prune_uv() {
+    title uv
+    uv clean
+}
+
+prune_go() {
+    title go
+    go clean -cache -testcache -modcache -fuzzcache
+}
+
+prune_pnpm() {
+    title pnpm
+    pnpm store prune
+}
+
+prune_npm() {
+    title npm
+    npm cache clean
+}
+
+prune_yarn() {
+    title yarn
+    yarn cache clean
+}
+
+prune_bun() {
+    title bun
+    bun pm cache rm
+}
+
+prune_podman() {
+    title podman
+    podman network prune
+    podman image prune 
+}
+
+prune_uv
+prune_go
+prune_pnpm
+prune_npm
+prune_yarn
+prune_bun
+prune_podman

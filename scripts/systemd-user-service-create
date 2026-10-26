@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+set -eu
+
+SRV_NAME="${1:?require a name}"
+TEMP_FILE="$(mktemp)"
+
+echo "$SRV_NAME" | grep -q '^[a-z][0-9a-z-]*$' ||  exit 1
+
+cat <<EOF > "$TEMP_FILE"
+[Unit]
+Description=REPLACE: short description
+Documentation=man:systemd.service(5)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+ExecStart=%h/.local/bin/REPLACE-bin run
+# 主进程还活着时做同步收尾。没有 quit 子命令就删掉这一行，
+# 让 systemd 发 SIGTERM 并等 TimeoutStopSec。
+ExecStop=%h/.local/bin/REPLACE-bin quit
+# 进程已退出后的清理。前缀 - 表示失败不让 unit 变 failed。
+# 启动失败时 ExecStop 不跑，这条仍会跑。必须幂等（restart 也会跑）。
+ExecStopPost=-%h/.local/bin/REPLACE-bin cleanup
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+
+$EDITOR "$TEMP_FILE"
+
+cp $TEMP_FILE ~/.config/systemd/user/$SRV_NAME.service
+echo "Start by
+systemctl --user daemon-reload
+systemctl --user enable --now $SRV_NAME.service
+"

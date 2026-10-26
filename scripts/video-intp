@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+FAILED=0
+
+_check() {
+    local file=$1
+    local err
+    local rc=0
+    local line
+
+    err=$(mktemp)
+    ffmpeg -hide_banner -nostats -v error -i "$file" -map 0 -f null - \
+        >/dev/null 2>"$err" || rc=$?
+
+    if [[ $rc -ne 0 || -s $err ]]; then
+        FAILED=1
+        printf '%s\n' "$file"
+        if [[ -s $err ]]; then
+            while IFS= read -r line; do
+                printf '  %s\n' "$line"
+            done <"$err"
+        else
+            printf '  exit %s\n' "$rc"
+        fi
+    fi
+
+    rm -f "$err"
+}
+
+for target in "$@"; do
+    if [[ -f $target ]]; then
+        _check "$target"
+    elif [[ -d $target ]]; then
+        while IFS= read -r -d '' file; do
+            _check "$file"
+        done < <(find "$target" -maxdepth 1 -type f \( \
+            -iname '*.mp4' -o -iname '*.mkv' -o -iname '*.mov' -o \
+            -iname '*.avi' -o -iname '*.webm' -o -iname '*.ts' -o \
+            -iname '*.m4v' \) -print0)
+    else
+        printf 'not a file or directory: %s\n' "$target" >&2
+        exit 1
+    fi
+done
+
+exit "$FAILED"

@@ -1,0 +1,481 @@
+#!/usr/bin/env python3
+"""Copy agent session records for this directory tree into .aiagents/sessions.
+
+Records stay in their original stores. A file is copied again only when its
+size or modification time differs from the copy already at the destination.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import sqlite3
+import subprocess
+import sys
+import urllib.parse
+from pathlib import Path
+
+
+TOOLS = ("grok", "codex", "claude", "antigravity")
+UUID_NAME = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+ROLLOUT_NAME = re.compile(
+    r"^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-"
+    r"[0-9a-fA-F-]{36}\.jsonl(?:\.zst)?$"
+)
+FILE_URI = re.compile(r"file://[^\s\"'\\]+")
+ANTIGRAVITY_DIRS = (
+    "antigravity",
+    "antigravity-cli",
+    "antigravity-ide",
+    "antigravity-backup",
+)
+
+
+def main(argv: list[str]) -> int:
+    if any(arg in {"-h", "--help"} for arg in argv):
+        print("usage: copy-sessions.py [directory]", file=sys.stderr)
+        return 0
+    if len(argv) > 1:
+        print("usage: copy-sessions.py [directory]", file=sys.stderr)
+        return 2
+    root = Path(argv[0]).expanduser() if argv else Path.cwd()
+    root = root.resolve()
+    if not root.is_dir():
+        print(f"copy-sessions: not a directory: {root}", file=sys.stderr)
+        return 1
+    if root == Path(root.anchor):
+        print(f"copy-sessions: refuse filesystem root: {root}", file=sys.stderr)
+        return 1
+
+    destination = root / ".aiagents" / "sessions"
+    jobs = [
+        *_grok_jobs(root, destination),
+        *_claude_jobs(root, destination),
+        *_codex_jobs(root, destination),
+        *_antigravity_jobs(root, destination),
+    ]
+    counts = {tool: {"copied": 0, "skipped": 0} for tool in TOOLS}
+    seen: set[Path] = set()
+    for tool, pairs in jobs:
+        for source, target in pairs:
+            if target in seen:
+                counts[tool]["skipped"] += 1
+                continue
+            seen.add(target)
+            if _copy_file(source, target):
+                counts[tool]["copied"] += 1
+            else:
+                counts[tool]["skipped"] += 1
+
+    for tool in TOOLS:
+        copied = counts[tool]["copied"]
+        skipped = counts[tool]["skipped"]
+        print(f"{tool}: copied {copied} files, skipped {skipped} files")
+    print(destination)
+    return 0
+
+
+def _under(path: str, root: Path) -> bool:
+    candidate = Path(path).expanduser()
+    if not candidate.is_absolute():
+        return False
+    candidate = Path(os.path.normpath(candidate))
+    root_real = Path(os.path.normpath(root))
+    if candidate == root_real or root_real in candidate.parents:
+        return True
+    try:
+        resolved = candidate.resolve()
+    except OSError:
+        return False
+    return resolved == root_real or root_real in resolved.parents
+
+
+def _copy_file(source: Path, target: Path) -> bool:
+    """Copy one regular file. Return True when bytes were written."""
+    if source.is_symlink() or not source.is_file():
+        return False
+    try:
+        source_stat = source.stat()
+    except OSError:
+        return False
+    if target.exists():
+        if target.is_symlink() or not target.is_file():
+            print(f"copy-sessions: destination is not a file: {target}", file=sys.stderr)
+            return False
+        try:
+            target_stat = target.stat()
+        except OSError:
+            target_stat = None
+        if target_stat is not None and (
+            source_stat.st_dev == target_stat.st_dev
+            and source_stat.st_ino == target_stat.st_ino
+        ):
+            return False
+        if target_stat is not None and (
+            source_stat.st_size == target_stat.st_size
+            and source_stat.st_mtime_ns == target_stat.st_mtime_ns
+        ):
+            return False
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+    try:
+        shutil.copy2(source, temporary)
+        os.replace(temporary, target)
+    except OSError:
+        temporary.unlink(missing_ok=True)
+        raise
+    return True
+
+
+def _regular_files(directory: Path) -> list[Path]:
+    files: list[Path] = []
+    for current, dirnames, filenames in os.walk(directory, followlinks=False):
+        current_path = Path(current)
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if not (current_path / name).is_symlink()
+        ]
+        for name in filenames:
+            path = current_path / name
+            if path.is_symlink() or not path.is_file():
+                continue
+            files.append(path)
+    return files
+
+
+def _grok_home() -> Path:
+    return Path(os.environ.get("GROK_HOME", Path.home() / ".grok")).expanduser()
+
+
+def _claude_home() -> Path:
+    configured = os.environ.get("CLAUDE_CONFIG_DIR")
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".claude"
+
+
+def _codex_home() -> Path:
+    return Path(os.environ.get("CODEX_HOME", Path.home() / ".codex")).expanduser()
+
+
+def _gemini_home() -> Path:
+    return Path(os.environ.get("GEMINI_HOME", Path.home() / ".gemini")).expanduser()
+
+
+def _grok_jobs(root: Path, destination: Path) -> list[tuple[str, list[tuple[Path, Path]]]]:
+    sessions = _grok_home() / "sessions"
+    if not sessions.is_dir():
+        return []
+    jobs: list[tuple[str, list[tuple[Path, Path]]]] = []
+    for group in sessions.iterdir():
+        if group.is_symlink() or not group.is_dir():
+            continue
+        decoded = urllib.parse.unquote(group.name)
+        matched = decoded.startswith("/") and _under(decoded, root)
+        if not matched:
+            marker = group / ".cwd"
+            if marker.is_file() and not marker.is_symlink():
+                recorded = marker.read_text(encoding="utf-8", errors="replace").strip()
+                matched = _under(recorded, root)
+        if not matched:
+            continue
+        for session in group.iterdir():
+            if session.is_symlink() or not session.is_dir():
+                continue
+            if not UUID_NAME.fullmatch(session.name):
+                continue
+            history = session / "chat_history.jsonl"
+            if history.is_symlink() or not history.is_file():
+                continue
+            jobs.append((
+                "grok",
+                [(history, destination / "grok" / session.name / history.name)],
+            ))
+    return jobs
+
+
+def _slug(path: Path) -> str:
+    return "".join(char if char.isalnum() else "-" for char in str(path))
+
+
+def _claude_cwd(path: Path) -> str | None:
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if '"cwd"' not in line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            cwd = record.get("cwd") if isinstance(record, dict) else None
+            if isinstance(cwd, str) and cwd:
+                return cwd
+    return None
+
+
+def _claude_jobs(root: Path, destination: Path) -> list[tuple[str, list[tuple[Path, Path]]]]:
+    projects = _claude_home() / "projects"
+    if not projects.is_dir():
+        return []
+    slug = _slug(root)
+    jobs: list[tuple[str, list[tuple[Path, Path]]]] = []
+    for project in projects.iterdir():
+        if project.is_symlink() or not project.is_dir():
+            continue
+        if project.name != slug and not project.name.startswith(slug + "-"):
+            continue
+        for path in project.iterdir():
+            if (
+                path.is_symlink()
+                or not path.is_file()
+                or path.suffix != ".jsonl"
+                or not UUID_NAME.fullmatch(path.stem)
+            ):
+                continue
+            cwd = _claude_cwd(path)
+            if cwd is not None and not _under(cwd, root):
+                continue
+            if cwd is None and project.name != slug:
+                continue
+            jobs.append(("claude", [(path, destination / "claude" / path.name)]))
+    return jobs
+
+
+def _codex_database() -> Path | None:
+    home = _codex_home()
+    found: list[tuple[int, Path]] = []
+    if not home.is_dir():
+        return None
+    for path in home.glob("state_*.sqlite"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        suffix = path.stem.removeprefix("state_")
+        if suffix.isdigit():
+            found.append((int(suffix), path))
+    if not found:
+        return None
+    return max(found)[1]
+
+
+def _codex_existing(home: Path, raw_path: object) -> Path | None:
+    if not isinstance(raw_path, str) or not raw_path:
+        return None
+    path = Path(raw_path).expanduser()
+    if not path.is_absolute():
+        path = home / path
+    candidates = [path]
+    if path.name.endswith(".jsonl"):
+        candidates.append(Path(str(path) + ".zst"))
+    for candidate in candidates:
+        if (
+            ROLLOUT_NAME.fullmatch(candidate.name)
+            and candidate.is_file()
+            and not candidate.is_symlink()
+        ):
+            return candidate
+    return None
+
+
+def _codex_pairs_from_database(root: Path, destination: Path) -> list[tuple[Path, Path]] | None:
+    database = _codex_database()
+    if database is None:
+        return None
+    home = _codex_home()
+    try:
+        connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return None
+    try:
+        columns = {row[1] for row in connection.execute("pragma table_info(threads)")}
+        if not {"rollout_path", "cwd"}.issubset(columns):
+            return None
+        pairs: list[tuple[Path, Path]] = []
+        for raw_path, cwd in connection.execute("select rollout_path, cwd from threads"):
+            if not isinstance(cwd, str) or not _under(cwd, root):
+                continue
+            source = _codex_existing(home, raw_path)
+            if source is None:
+                continue
+            try:
+                relative = source.relative_to(home)
+            except ValueError:
+                relative = Path(source.name)
+            pairs.append((source, destination / "codex" / relative))
+        return pairs
+    except sqlite3.Error:
+        return None
+    finally:
+        connection.close()
+
+
+def _codex_cwd_from_file(path: Path) -> str | None:
+    if path.name.endswith(".jsonl.zst"):
+        if shutil.which("zstd") is None:
+            return None
+        completed = subprocess.run(
+            ["zstd", "-dc", str(path)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if completed.returncode != 0:
+            return None
+        lines = completed.stdout.decode("utf-8", errors="replace").splitlines()[:20]
+    else:
+        lines = []
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            for _ in range(20):
+                line = handle.readline()
+                if not line:
+                    break
+                lines.append(line)
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict) or record.get("type") != "session_meta":
+            continue
+        payload = record.get("payload")
+        cwd = payload.get("cwd") if isinstance(payload, dict) else None
+        if isinstance(cwd, str):
+            return cwd
+        return None
+    return None
+
+
+def _codex_jobs(root: Path, destination: Path) -> list[tuple[str, list[tuple[Path, Path]]]]:
+    pairs = _codex_pairs_from_database(root, destination)
+    if pairs is not None:
+        return [("codex", pairs)] if pairs else []
+    home = _codex_home()
+    collected: list[tuple[Path, Path]] = []
+    for folder in ("sessions", "archived_sessions"):
+        base = home / folder
+        if not base.is_dir() or base.is_symlink():
+            continue
+        for current, dirnames, filenames in os.walk(base, followlinks=False):
+            current_path = Path(current)
+            dirnames[:] = [
+                name
+                for name in dirnames
+                if not (current_path / name).is_symlink()
+            ]
+            for name in filenames:
+                path = current_path / name
+                if not ROLLOUT_NAME.fullmatch(name) or path.is_symlink():
+                    continue
+                cwd = _codex_cwd_from_file(path)
+                if cwd is None or not _under(cwd, root):
+                    continue
+                collected.append((path, destination / "codex" / path.relative_to(home)))
+    return [("codex", collected)] if collected else []
+
+
+def _uri_paths(value: str) -> list[str]:
+    text = value.strip()
+    if not text:
+        return []
+    found = FILE_URI.findall(text)
+    if not found and text.startswith("/"):
+        found = [text]
+    paths: list[str] = []
+    for item in found:
+        if item.startswith("file://"):
+            parsed = urllib.parse.urlparse(item)
+            paths.append(urllib.parse.unquote(parsed.path))
+        else:
+            paths.append(item)
+    return paths
+
+
+def _workspace_paths(raw: object) -> list[str]:
+    if not isinstance(raw, str) or not raw.strip():
+        return []
+    text = raw.strip()
+    if text[0] in "[{":
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = None
+        values: list[str] = []
+        if isinstance(parsed, str):
+            values = [parsed]
+        elif isinstance(parsed, list):
+            values = [item for item in parsed if isinstance(item, str)]
+        elif isinstance(parsed, dict):
+            for item in parsed.values():
+                if isinstance(item, str):
+                    values.append(item)
+                elif isinstance(item, list):
+                    values.extend(entry for entry in item if isinstance(entry, str))
+        if values:
+            paths: list[str] = []
+            for value in values:
+                paths.extend(_uri_paths(value))
+            return paths
+    return _uri_paths(text)
+
+
+def _antigravity_jobs(root: Path, destination: Path) -> list[tuple[str, list[tuple[Path, Path]]]]:
+    gemini = _gemini_home()
+    jobs: list[tuple[str, list[tuple[Path, Path]]]] = []
+    for name in ANTIGRAVITY_DIRS:
+        base = gemini / name
+        database = base / "conversation_summaries.db"
+        if not database.is_file() or database.is_symlink():
+            continue
+        try:
+            connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+        except sqlite3.Error:
+            continue
+        try:
+            columns = {
+                row[1]
+                for row in connection.execute("pragma table_info(conversation_summaries)")
+            }
+            if not {"conversation_id", "workspace_uris"}.issubset(columns):
+                continue
+            rows = connection.execute(
+                "select conversation_id, workspace_uris from conversation_summaries"
+            )
+            for conversation_id, workspace_uris in rows:
+                if not isinstance(conversation_id, str) or not UUID_NAME.fullmatch(conversation_id):
+                    continue
+                if not any(_under(path, root) for path in _workspace_paths(workspace_uris)):
+                    continue
+                pairs: list[tuple[Path, Path]] = []
+                session_dest = destination / "antigravity" / name / conversation_id
+                conversation = base / "conversations" / f"{conversation_id}.db"
+                for suffix in ("", "-wal", "-shm"):
+                    source = Path(str(conversation) + suffix)
+                    if source.is_file() and not source.is_symlink():
+                        pairs.append((source, session_dest / source.name))
+                brain = base / "brain" / conversation_id
+                if brain.is_dir() and not brain.is_symlink():
+                    pairs.extend(
+                        (path, session_dest / "brain" / path.relative_to(brain))
+                        for path in _regular_files(brain)
+                    )
+                if pairs:
+                    jobs.append(("antigravity", pairs))
+        except sqlite3.Error:
+            continue
+        finally:
+            connection.close()
+    return jobs
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main(sys.argv[1:]))
+    except BrokenPipeError:
+        raise SystemExit(0)
