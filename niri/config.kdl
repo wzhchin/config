@@ -168,7 +168,7 @@ layout {
     gaps 9
     center-focused-column "never"
     always-center-single-column
-    default-column-display "normal"
+    // default-column-display "normal"
 
     preset-column-widths {
         proportion 0.33333
@@ -481,7 +481,7 @@ binds {
 
     // Suggested binds for running programs: terminal, app launcher, screen locker.
     Mod+Return { spawn "foot"; }
-    Mod+X { spawn "emacs"; }
+    Mod+X { spawn "~/files/config/dmenu/agent-session-dmenu"; }
     Mod+D { spawn "rglauncher" "-t" "app,win,calc"; }
     Mod+S { spawn "rglauncher" "-t" "clip"; }
     Mod+Alt+L { spawn "screenlock"; }
