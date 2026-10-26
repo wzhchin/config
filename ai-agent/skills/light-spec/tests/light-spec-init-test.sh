@@ -25,6 +25,7 @@ mkdir -p "$project/nested"
 git -C "$project" init -q
 printf '# Agent instructions\n' >"$project/AGENTS.md"
 printf '# Claude instructions\n' >"$project/CLAUDE.md"
+claude_before=$(cat -- "$project/CLAUDE.md")
 
 "$init_script" "$project/nested"
 
@@ -36,17 +37,15 @@ for directory in \
   assert_directory "$directory"
 done
 
-for instructions_file in "$project/AGENTS.md" "$project/CLAUDE.md"; do
-  assert_contains "$instructions_file" '<!-- light-spec:start -->'
-  assert_contains "$instructions_file" "Use the \`light-spec\` skill"
-done
+assert_contains "$project/AGENTS.md" '<!-- light-spec:start -->'
+assert_contains "$project/AGENTS.md" "Use the \`light-spec\` skill"
+[[ "$(cat -- "$project/CLAUDE.md")" == "$claude_before" ]] || fail 'CLAUDE.md was modified'
 
 "$init_script" "$project"
 
-for instructions_file in "$project/AGENTS.md" "$project/CLAUDE.md"; do
-  marker_count=$(grep -Fc -- '<!-- light-spec:start -->' "$instructions_file")
-  [[ "$marker_count" -eq 1 ]] || fail "duplicate Light Spec prompt in $instructions_file"
-done
+marker_count=$(grep -Fc -- '<!-- light-spec:start -->' "$project/AGENTS.md")
+[[ "$marker_count" -eq 1 ]] || fail 'duplicate Light Spec prompt in AGENTS.md'
+[[ "$(cat -- "$project/CLAUDE.md")" == "$claude_before" ]] || fail 'CLAUDE.md was modified'
 
 plain_project="$test_root/plain-project"
 mkdir -p "$plain_project"
@@ -56,7 +55,22 @@ assert_directory "$plain_project/docs/specs"
 assert_directory "$plain_project/docs/changes/now"
 assert_directory "$plain_project/docs/changes/ended"
 assert_directory "$plain_project/docs/lessons-learned"
-[[ ! -e "$plain_project/AGENTS.md" ]] || fail 'AGENTS.md should not be created'
-[[ ! -e "$plain_project/CLAUDE.md" ]] || fail 'CLAUDE.md should not be created'
+assert_contains "$plain_project/AGENTS.md" '<!-- light-spec:start -->'
+assert_contains "$plain_project/AGENTS.md" "Use the \`light-spec\` skill"
+
+"$init_script" "$plain_project"
+marker_count=$(grep -Fc -- '<!-- light-spec:start -->' "$plain_project/AGENTS.md")
+[[ "$marker_count" -eq 1 ]] || fail 'duplicate Light Spec prompt in created AGENTS.md'
+
+cat >"$test_root/expected-agents.md" <<'EOF'
+<!-- light-spec:start -->
+## Light Spec
+
+Use the `light-spec` skill to initialize or maintain project specifications, change records, and reusable lessons under `docs/`.
+<!-- light-spec:end -->
+EOF
+cmp -s "$test_root/expected-agents.md" "$plain_project/AGENTS.md" \
+  || fail 'created AGENTS.md content mismatch'
+[[ ! -e "$plain_project/CLAUDE.md" ]] || fail 'CLAUDE.md was created'
 
 printf 'PASS: light-spec-init.sh\n'

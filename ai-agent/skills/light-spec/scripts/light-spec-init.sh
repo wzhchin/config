@@ -39,26 +39,24 @@ Use the `light-spec` skill to initialize or maintain project specifications, cha
 EOF
 )
 
+instructions_file="$project_root/AGENTS.md"
 updated_count=0
 
-for instructions_name in AGENTS.md CLAUDE.md; do
-  instructions_file="$project_root/$instructions_name"
-  [[ -f "$instructions_file" ]] || continue
-
-  if grep -Fq -- "$prompt_marker" "$instructions_file"; then
-    continue
-  fi
-
+if [[ ! -f "$instructions_file" ]]; then
+  printf '%s\n' "$prompt" >"$instructions_file"
+  printf 'Created %s\n' "$instructions_file"
+  updated_count=1
+elif ! grep -Fq -- "$prompt_marker" "$instructions_file"; then
   if [[ -s "$instructions_file" ]]; then
     printf '\n' >>"$instructions_file"
   fi
   printf '%s\n' "$prompt" >>"$instructions_file"
   printf 'Updated %s\n' "$instructions_file"
-  ((updated_count += 1))
-done
+  updated_count=1
+fi
 
 printf 'Initialized Light Spec directories under %s/docs\n' "$project_root"
 
 if (( updated_count == 0 )); then
-  printf 'No root AGENTS.md or CLAUDE.md required an update.\n'
+  printf 'No root AGENTS.md required an update.\n'
 fi
