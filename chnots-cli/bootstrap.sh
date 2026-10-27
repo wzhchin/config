@@ -11,7 +11,7 @@ This dir is a chnot knowledge dir.
 
 Based on PARA and Code.
 
-Try to use `chnots-cli spec` or `chnots-cli help`.
+Try to use \`chnots-cli spec\` or \`chnots-cli help\`.
 EOF
 	fi
     mkdir -p cpts prjs areas rsrs archives .chnots

@@ -17,17 +17,18 @@ chnot-vault/                                 # 知识库根目录 (Git 仓库)
 │   ├── templates/                           # 标准化预设模板
 │   └── scripts/                             # 工作脚本
 ├── cpts/                                    # Code -- Captures 
+│   ├── archives/                            # 存档目录  
 │   └── 2609-01-<slug>/                      # 快速捕获 Chnot
 ├── prjs/                                    # PARA -- Projects 有明确截止期的交付任务。
+│   ├── archives/                            # 存档目录  
 │   └── login-v2/                            # 短期项目 Chnot
 ├── areas/                                   # PARA -- Areas 需要持续维持标准的岗位职责。
+│   ├── archives/                            # 存档目录 
 │   └── devops-infra/                        # 长期 Area Chnot
-├── rsrs/                                    # PARA -- Resources 通用客观知识资产空间。以 **Theme 专题或原子条目** 组织。
-│   └── pkm-methodology/                     # 可复用资产 Chnot
-└── archives/                                # PARA -- Archives
-    ├── prjs/                                # 归档已完成的项目 
-    ├── areas/                               # 归档已完成的 area
-    └── rsrs/                                # 归档已废弃的 Theme 专题或技术资产
+└── rsrs/                                    # PARA -- Resources 通用客观知识资产空间。以 **Theme 专题或原子条目** 组织。
+    ├── .git/ 
+    ├── archives/                            # 存档目录 
+    └── pkm-methodology/                     # 可复用资产 Chnot
 ```
 
 ### Chnot
