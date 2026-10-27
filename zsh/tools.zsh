@@ -86,22 +86,41 @@ jl() {
     unset folder option
 }
 
-tddr() {
-    if [ -z "$CHIN_DAILY_DIR" ]; then
-        echo "Set CHIN_DAILY_DIR"
+ptt() {
+    local cpt_dir="$CHIN_PUB_CHNOT_DIR/cpts"
+    if [ -z "$cpt_dir" ]; then
+        echo "Set cpt_dir"
         return 1
     fi
-    local _d="$(ls $CHIN_DAILY_DIR | fzf -q "$1" --header='Ctrl-j: use input' --bind 'ctrl-j:become(printf "%s\n" {q})' --bind 'enter:accept-or-print-query' | sed "s/__date__/$(date +%y%m-%d)/g")"
-    local _dd="$CHIN_DAILY_DIR/$_d"
+    local _d="$(ls $cpt_dir | fzf -q "$1" --header='Ctrl-j: use input' --bind 'ctrl-j:become(printf "%s\n" {q})' --bind 'enter:accept-or-print-query' | sed "s/__date__/$(date +%y%m-%d)/g")"
+    local _dd="$cpt_dir/$_d"
     if ! [ -d "$_dd" ]; then
         if ! echo "$_d" | grep -i -E '[0-9]{2}[01][0-9]-[0-3][0-9]'; then
-	    _dd="$CHIN_DAILY_DIR/$(date +%y%m-%d)-$_d"
+	    _dd="$cpt_dir/$(date +%y%m-%d)-$_d"
         fi
         mkdir -p "$_dd"
     fi
+    unset cpt_dir
     cd "$_dd"
 }
 
+wtt() {
+    local cpt_dir="$CHIN_WORK_CHNOT_DIR/cpts"
+    if [ -z "$cpt_dir" ]; then
+        echo "Set cpt_dir"
+        return 1
+    fi
+    local _d="$(ls $cpt_dir | fzf -q "$1" --header='Ctrl-j: use input' --bind 'ctrl-j:become(printf "%s\n" {q})' --bind 'enter:accept-or-print-query' | sed "s/__date__/$(date +%y%m-%d)/g")"
+    local _dd="$cpt_dir/$_d"
+    if ! [ -d "$_dd" ]; then
+        if ! echo "$_d" | grep -i -E '[0-9]{2}[01][0-9]-[0-3][0-9]'; then
+	    _dd="$cpt_dir/$(date +%y%m-%d)-$_d"
+        fi
+        mkdir -p "$_dd"
+    fi
+    unset cpt_dir
+    cd "$_dd"
+}
 [ -f /usr/share/fzf/key-bindings.zsh ] && . /usr/share/fzf/key-bindings.zsh
 
 ########################################
