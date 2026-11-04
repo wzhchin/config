@@ -126,13 +126,17 @@ zle -N down-line-or-beginning-search
 
 
 ## DIRECTORY NAVI
-export DIR_HISTORY_FILE="$CHIN_ZSH_CACHE_DIR/dir-hist"
+export DIR_HISTFILE="$CHIN_ZSH_CACHE_DIR/dir-hist"
 
 function chin-chpwd-append-dir() {
-    [ -n  "$HISTFILE" ] && echo "$PWD" >> "$DIR_HISTORY_FILE"
+    [ -n  "$HISTFILE" ] && echo "$PWD" >> "$DIR_HISTFILE"
 }
 add-zsh-hook -Uz chpwd chin-chpwd-append-dir
 chin-chpwd-append-dir
+
+function chin-clear-history-file {
+    perl -i.bak -lne 'print if !$seen{$_}++ && -d $_' "$DIR_HISTFILE"
+}
 
 function osc7 {
     local LC_ALL=C
