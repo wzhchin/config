@@ -14,7 +14,7 @@ Based on PARA and Code.
 Try to use \`chnots-cli spec\` or \`chnots-cli help\`.
 EOF
 	fi
-    mkdir -p cpts prjs areas rsrs archives .chnots
+    mkdir -p cpts/archives prjs/archives areas/archives rsrs/archives .chnots
 }
 
 bs_help() {
