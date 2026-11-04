@@ -40,6 +40,7 @@ ARGS=(
     --bind-try "$HOME/.cargo" /home/agent/.cargo
     --bind "$WDIR" /home/agent
     --setenv HOME /home/agent
+    --bind-try "/data/$(whoami)/files/config/ai-agent/skills" /home/agent/.gemini/config/skills
     --setenv XDG_CONFIG_HOME /home/agent/.config
     --setenv HTTP_PROXY "$CHIN_HTTP_PROXY"
     --setenv HTTPS_PROXY "$CHIN_HTTP_PROXY"
@@ -52,8 +53,7 @@ if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
     ARGS+=(--bind "$XDG_RUNTIME_DIR" "$XDG_RUNTIME_DIR")
 fi
 
-echo "cd $WDIR"
-cd "$WDIR"
+ARGS+=(--bind "$WDIR" "$WDIR")
 
 if [ "${#CMDS}" -eq 0 ]; then
     exec bwrap "${ARGS[@]}" zsh
