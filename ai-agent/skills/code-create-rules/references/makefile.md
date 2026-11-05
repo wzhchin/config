@@ -1,86 +1,38 @@
 # Makefile Rules
 
-## Discover project commands
-
-Look for `Makefile` or `makefile` before project command execution.
-
-If a Makefile exists, run `make help` to discover targets.
-
-If `make help` fails, inspect the Makefile and project documentation for targets.
-
-Use a Make target when it covers the required command.
-
-Do not bypass an available target with npm, Cargo, Gradle, Go, or another stack command.
-
-Pass supported variables with `make <target> VAR=value`.
-
-Unless the user requests a raw command, ask before project commands when no Makefile exists.
-
-If the user agrees, add a minimal Makefile with `help` and applicable project targets.
-
-If the user declines, do not create a Makefile.
-
-## Define public targets
-
-For a new Makefile, or when adding a new public operation, use this naming form:
-
-```text
-<action>[-<component>][-<profile>]
-```
-
-- Actions include `init`, `test`, `build`, `run`, `package`, `release`, `deploy`, and `clean`.
-- Components identify independently operated parts such as `web`, `server`, `android`, or `cli`.
-- Profiles identify materially different configurations such as `debug` or `release`.
-- Omit the component when the project has only one buildable component.
-- Preserve established target names in an existing project unless the user requests a migration.
-
-Examples include `test`, `build-debug`, `build-release`, `build-web-debug`, and `build-server-release`.
-
-Add only targets that represent real project operations. Do not add empty targets or unsupported debug, release, or component combinations merely to complete the naming matrix.
-
-## Target requirements
-
-| Target | Required behavior |
+| Rule | Requirement |
 | --- | --- |
-| `help` | List public targets, their purpose, and important variables without changing project state. |
-| `init` | Perform the repeatable local bootstrap needed before build or test, such as installing dependencies or creating generated local configuration. Make it safe to run more than once. Do not modify user-global configuration without explicit approval. |
-| `test` | Run the project's meaningful default automated test suite non-interactively. Return nonzero when tests fail. Add narrower targets such as `test-unit` or `test-integration` only when the project has those suites. |
-| `build` | Build the documented default local artifact. Prefer making it an alias of the appropriate concrete build target rather than duplicating its recipe. It must not silently publish or deploy. |
-| `build-debug` | Produce a development or diagnostic artifact with the project's debug configuration. Preserve useful diagnostics such as source maps or debug symbols when supported. |
-| `build-release` | Produce an optimized production artifact and run required release-build checks. Building a release artifact must not itself publish, deploy, tag, or push it. |
-| `build-<component>-debug` | Build only the named component using its debug configuration, for example `build-web-debug` or `build-server-debug`. |
-| `build-<component>-release` | Build only the named component using its production configuration, for example `build-web-release` or `build-server-release`. |
-| `run` | Start the documented local application or service in the foreground so signals and exit status propagate correctly. Use component or profile suffixes when behavior differs. |
-| `package` | Assemble already-built outputs into the project's distributable format without publishing them. |
-| `release` | Run the project's established release workflow only when that workflow is explicitly defined. Keep external publication, tagging, and pushing visible; obtain authorization before those mutations. |
-| `deploy` | Perform an explicitly requested deployment. Make the destination and environment visible through the target name or documented variables. |
-| `clean` | Remove only generated project outputs owned by the corresponding build. Do not remove source files, secrets, user-global caches, or unspecified paths. |
+| Naming | Use `[object-]action[-qualifier...]`; omit the object for a single-object project. |
+| Actions | Keep `build`, `run`, `test`, `clean`, and `package` separate. Add only supported operations. |
+| Configuration | If an operation distinguishes configurations, name each one, e.g. `server-build-debug` and `server-build-release`; do not add an ambiguous `server-build`. Otherwise omit the configuration. |
+| Aggregation | Use `all` for all applicable objects or a group name for a subset. Document the scope and required toolchains. |
+| Phony targets | Declare operation and aggregate targets as `.PHONY`, including each prerequisite that is itself an operation. Do not mark actual file targets as `.PHONY`. |
+| Help | Do not add a `help` target. |
 
-For a multi-component repository, make the aggregate target depend on its component targets when all components are intended:
+## Packaging
 
-```make
-build-debug: build-web-debug build-server-debug
-build-release: build-web-release build-server-release
-```
+Use `[object-]package[-platform][-format][-configuration]`. Include each qualifier when needed to distinguish supported operations. Distinguish package formats when a platform has multiple formats. Packaging may depend on the corresponding build target.
 
-Do not assume `build` means `build-release`. Choose and document the default that matches the project's normal local workflow; prefer `build-debug` when no established default exists.
+| Dimension | Examples |
+| --- | --- |
+| Object | `server`, `desktop`, `all` |
+| Platform | `archlinux`, `debian`, `windows`, `macos`, `android` |
+| Format | `zip`, `msi`, `dmg`, `apk`, `aab`, `deb` |
+| Configuration | `debug`, `release` |
+| Other considerations | Installer or portable form, included dependencies, signing, validation, checksums |
 
-## Recipe requirements
+Do not add architecture to target names for now; no architecture variable is prescribed.
 
-- Declare command-style targets as `.PHONY`.
-- Make public targets thin, stable wrappers around the project's actual tools or scripts.
-- Share prerequisites or private helper targets instead of duplicating recipes across debug, release, and component targets.
-- Let underlying command failures propagate to Make. Do not hide failures with unconditional success.
-- Keep targets non-interactive when practical. Document unavoidable prompts in `make help`.
-- Forward supported configuration as Make variables, such as `VERSION`, `PROFILE`, `COMPONENT`, or `OUTPUT_DIR`, and validate unsupported values before starting expensive work.
-- Keep debug and release outputs separate when one could overwrite or contaminate the other.
-- Do not embed passwords, tokens, private keys, or other secrets in the Makefile or command line. Apply the core secret-handling rule when a target needs them.
-- Do not make ordinary build or test targets depend on deployment, publication, or other external mutations.
+## Examples
 
-## Verify Makefile changes
+| Project | Example targets |
+| --- | --- |
+| Single Rust executable with configurations | `build-debug`, `build-release`, `test` |
+| Single Go executable without configurations | `build`, `run`, `test` |
+| Rust server, Go worker, and frontend | `server-build-release`, `worker-build`, `frontend-build`, `all-test` |
+| Android application | `build-debug`, `build-release`, `package-apk-debug`, `package-aab-release` |
+| Go packages `foo`, `bar`, `baz` without build configurations | `foo-build`, `foo-run`, `foo-test`, `foo-clean`, `foo-package`, `bar-build`, `baz-build`, `all-build` |
+| Rust packages `foo`, `bar`, `baz` with build configurations | `foo-build-debug`, `foo-build-release`, `foo-run-debug`, `foo-test`, `foo-clean`, `foo-package-release`, `bar-build-release`, `baz-build-release`, `all-build-release` |
+| Desktop packages for Windows | `desktop-package-windows-zip`, `desktop-package-windows-msi` |
 
-Run `make help` and confirm every added public target is discoverable.
-
-Run the narrowest safe target that exercises the changed recipe. Confirm its exit status and expected output artifact or observable result.
-
-For release, deploy, publish, or destructive targets that are not authorized to run, inspect the expanded recipe with a safe dry run when possible and report that the real operation was not executed.
+Examples are not mandatory target sets; include only operations the project supports. Packages may belong to one or multiple projects. Aggregate only objects managed by the Makefile, and document the scope.

@@ -1,6 +1,6 @@
 ---
 name: code-create-rules
-description: Default engineering rules for creating a new project or a standalone script or code file outside an existing project. Do not invoke implicitly for work inside an existing project; follow its established conventions unless the user explicitly requests $code-create-rules. When this skill applies, read every matching reference.
+description: Default engineering rules for creating a new project or a standalone script or code file outside an existing project. Do not invoke implicitly for work inside an existing project; follow its established conventions unless the user explicitly requests code-create-rules. When this skill applies, read every matching reference.
 ---
 
 # Code Creation Rules
