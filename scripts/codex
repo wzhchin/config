@@ -1,26 +1,4 @@
 #!/usr/bin/env bash
 
-MODEL=""
-case "$1" in
-    --glm-52)
-	MODEL="glm-5.2"
-	shift
-	;;
-    --ds-v4-pro)
-	MODEL="deepseek-v4-pro"
-	shift
-	;;
-esac
-
 source ~/.profile.d/mitm-proxy.sh
-
-if [ -z "$MODEL" ]; then
-    /usr/bin/codex "$@"
-else
-    export OPENAI_API_KEY="sk-cpa"
-    /usr/bin/codex -c model=deepseek-v4-pro \
-		   -c model_provider=cpa \
-		   -c model_providers.cpa.name=cpa \
-		   -c model_providers.cpa.base_url=http://l25.lc:8317/v1 \
-		   -c model_providers.cpa.env_key="OPENAI_API_KEY" "$@"
-fi
+/usr/bin/codex "$@"
