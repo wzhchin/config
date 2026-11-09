@@ -56,7 +56,7 @@ Use `kpass` from the Makefile to retrieve these Android-specific entries. The Ma
 | `PASS_STORE_PASSWORD` | `ANDROID_APP_RELEASE_PASSWORD` | store password |
 | `PASS_KEY_PASSWORD` | `ANDROID_APP_RELEASE_PASSWORD` | key password |
 | `PASS_KEY_ALIAS` | `ANDROID_APP_RELEASE_ALIAS` | alias text |
-| `PASS_KEYSTORE` | `android-app-release.keystore` | binary keystore |
+| `PASS_KEYSTORE` | `F-android-app-release.keystore` | binary keystore |
 
 Example release section for the project-root `Makefile`:
 
@@ -64,7 +64,7 @@ Example release section for the project-root `Makefile`:
 PASS_STORE_PASSWORD ?= ANDROID_APP_RELEASE_PASSWORD
 PASS_KEY_PASSWORD ?= ANDROID_APP_RELEASE_PASSWORD
 PASS_KEY_ALIAS ?= ANDROID_APP_RELEASE_ALIAS
-PASS_KEYSTORE ?= android-app-release.keystore
+PASS_KEYSTORE ?= F-android-app-release.keystore
 KEYSTORE_FILENAME ?= android-app-release.keystore
 export PASS_STORE_PASSWORD PASS_KEY_PASSWORD PASS_KEY_ALIAS PASS_KEYSTORE KEYSTORE_FILENAME
 
@@ -76,7 +76,7 @@ build-release:
 	mkdir -p signature; \
 	signing_dir=$$(mktemp -d "$$(pwd)/signature/.release.XXXXXXXX"); \
 	trap 'rm -rf -- "$$signing_dir"' EXIT; \
-	kpass get-file "$$PASS_KEYSTORE" -o "$$signing_dir" >/dev/null; \
+	kpass gf "$$PASS_KEYSTORE" "$$signing_dir/$$KEYSTORE_FILENAME" >/dev/null; \
 	ANDROID_KEYSTORE_FILE="$$signing_dir/$$KEYSTORE_FILENAME"; \
 	test -f "$$ANDROID_KEYSTORE_FILE"; \
 	ANDROID_STORE_PASSWORD=$$(kpass get "$$PASS_STORE_PASSWORD"); \
