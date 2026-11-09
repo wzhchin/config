@@ -36,7 +36,5 @@
 - Explain as fully as the question requires. Use examples to aid understanding, without a fixed number.
 - Use planning tools for multi-step work when available. System and tool-environment constraints take precedence.
 
-# Memory
-
-- Keep project-specific knowledge in project memory.
-- Use `amem append` only for cross-session, cross-project lessons and verified solutions; exclude progress, local state, secrets, and unverified claims. Before appending, `amem search` and `amem view`; `amem help` for usage.
+# Tools
+- when you need to read raw html, use `uvx markitdown` to convert it into markdown.
