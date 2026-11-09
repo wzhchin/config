@@ -82,6 +82,8 @@ Keep the selected faces transparent on TTY frames."
 (defvar evil-want-keybinding)
 (defvar evil-undo-system)
 (defvar evil-disable-insert-state-bindings)
+(defvar evil-mode-line-format)
+(defvar evil-state)
 
 (setq evil-respect-visual-line-mode t
       evil-want-abbrev-expand-on-insert-exit t
@@ -89,9 +91,28 @@ Keep the selected faces transparent on TTY frames."
       ;; bindings are installed locally after those libraries load.
       evil-want-keybinding nil
       evil-undo-system 'undo-redo
-      evil-disable-insert-state-bindings t)
+      evil-disable-insert-state-bindings t
+      evil-mode-line-format '(before . mode-line-front-space))
 
 (defvar chin/evil-initialized nil)
+
+(defconst chin/evil-mode-line-colors
+  '((normal . "#204a87")
+    (insert . "#2e6344")
+    (visual . "#6c437a")
+    (replace . "#8f3843")
+    (motion . "#455a64")
+    (operator . "#8a4b08")
+    (emacs . "#665600"))
+  "Background colors for the leftmost Evil state tag.")
+
+(defun chin/color-evil-mode-line-tag (generate &optional state)
+  "Color the tag returned by GENERATE for Evil STATE."
+  (let ((tag (funcall generate state))
+        (color (alist-get (or state evil-state) chin/evil-mode-line-colors)))
+    (if (and (stringp tag) color)
+        (propertize tag 'face (list :background color :foreground "#ffffff"))
+      tag)))
 
 (declare-function global-git-gutter-mode "git-gutter")
 (declare-function global-display-line-numbers-mode "display-line-numbers")
@@ -138,6 +159,7 @@ Keep the selected faces transparent on TTY frames."
   "Load Evil and install its global configuration once."
   (unless chin/evil-initialized
     (require 'evil)
+    (advice-add 'evil-generate-mode-line-tag :around #'chin/color-evil-mode-line-tag)
     (evil-mode 1)
     ;; Call the function behind `evil-define-key' so this file can be loaded
     ;; before Evil itself is available.
