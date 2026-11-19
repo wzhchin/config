@@ -1,1 +1,2 @@
 icon_path = "icon-config.toml"
+top_left_command = "niri msg action focus-workspace-previous"
