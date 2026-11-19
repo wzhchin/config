@@ -4,11 +4,12 @@ set -euo pipefail
 
 IMAGE_FILE=""
 OUTPUT=""
-INTERVAL_SECONDS=100
+INTERVAL_SECONDS=10
 ARGS=()
 
 show_wall() {
     local image="$1"
+    echo "$image"
     awww img \
          --resize crop \
          --transition-type push-right \
