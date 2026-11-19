@@ -96,6 +96,7 @@ output "eDP-1" {
 cursor {
     // hide-when-typing
     // hide-after-inactive-ms 1000
+    shake-to-enlarge
 }
 
 overview {
@@ -108,6 +109,12 @@ overview {
         spread 10
         offset x=0 y=10
         color "#00000050"
+    }
+}
+
+gestures {
+    hot-corners {
+        off
     }
 }
 
@@ -169,6 +176,7 @@ layout {
     center-focused-column "never"
     always-center-single-column
     // default-column-display "normal"
+    disable-auto-scroll-on-click
 
     preset-column-widths {
         proportion 0.33333
