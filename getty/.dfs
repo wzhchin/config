@@ -27,19 +27,24 @@ store() {
 }
 
 restore() {
-    #!/usr/bin/env bash
-    local tdir=/etc/systemd/system/getty@tty1.service.d/
+    local tdir=/etc/systemd/system/getty@tty1.service.d
     local tfile=$tdir/autologin.conf
+    local zshrc=$HOME/.zshrc
 
-    sudo mkdir -p "$tdir" 
-    cat <<EOF | sudo tee "$tfile" 
+    sudo mkdir -p "$tdir"
+    cat <<EOF | sudo tee "$tfile"
 [Service]
-ExecStart=-/sbin/agetty -o '-p -f -- \\u' --noclear --autologin $(whoami) %I \$TERM
+ExecStart=
+ExecStart=-/usr/bin/agetty --noreset --noclear --autologin $(whoami) - \${TERM}
 EOF
+    sudo systemctl daemon-reload
 
-    cat <<EOF >> $HOME/.zshrc
-if [ -z "\$DISPLAY" ] && [ "\$XDG_VTNR" = 1 ]; then
+    if [ ! -f "$zshrc" ] || ! grep -q 'XDG_VTNR' "$zshrc"; then
+        cat <<'EOF' >> "$zshrc"
+
+if [ -z "$DISPLAY" ] && [ "$XDG_VTNR" = 1 ]; then
   wm
 fi
 EOF
+    fi
 }
