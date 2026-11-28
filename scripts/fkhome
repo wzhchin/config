@@ -5,6 +5,7 @@ set -eu
 CMN_DIR="$HOME/.local/share/fkhome"
 CMN_PFL="$CMN_DIR/env.sh"
 WDIR="$(realpath -s "$1")"
+PDIR="$PWD"
 PMD5=$(echo "$WDIR" | md5sum | awk '{print $1}')
 
 shift
@@ -38,7 +39,8 @@ ARGS=(
     --bind-try /tmp/.X11-unix /tmp/.X11-unix
     --bind-try /run/dbus /run/dbus
     --bind-try "$HOME/.cargo" /home/agent/.cargo
-    --bind "$WDIR" /home/agent
+    --bind "$WDIR" /home/agent 
+    --bind "$PDIR" "$PDIR"
     --setenv HOME /home/agent
     --bind-try "/data/$(whoami)/files/config/ai-agent/skills" /home/agent/.gemini/config/skills
     --setenv XDG_CONFIG_HOME /home/agent/.config

@@ -24,12 +24,12 @@ is_linux() { [ "$KERNEL_NAME" = "Linux" ]; } # TDOC: check if linux
 is_msys() { [ "$KERNEL_NAME" = "MinGw" ] || [ "$KERNEL_NAME" = "MSys" ]; } # TDOC: check if msys2
 is_windows() { is_msys; }
 
-msg()    { echo -e "\033[32m==> $(date +%H:%M:%S) ~ \033[0m$*"; } # TDOC: msg
-msg2()   { echo -e "\033[32m -> $(date +%H:%M:%S) ~ \033[0m$*"; }
-warn()   { echo -e "\033[33m==> $(date +%H:%M:%S) ~ $*\033[0m"; } # TDOC: warn
-warn2()  { echo -e "\033[33m -> $(date +%H:%M:%S) ~ $*\033[0m"; }
-error()  { echo -e "\033[31m==> $(date +%H:%M:%S) ~ $*\033[0m"; }
-error2() { echo -e "\033[31m -> $(date +%H:%M:%S) ~ $*\033[0m"; }
+msg()    { echo -e "\033[32m==\033[0m $* \033[32m==\033[0m"; } # TDOC: msg
+msg2()   { echo -e "\033[32m--\033[0m $* \033[32m--\033[0m"; } # TDOC: msg2
+warn()   { echo -e "\033[35m==\033[0m $* \033[35m==\033[0m"; } # TDOC: warn
+warn2()  { echo -e "\033[35m--\033[0m $* \033[35m--\033[0m"; } # TDOC: warn2
+error()  { echo -e "\033[31m==\033[0m $* \033[31m==\033[0m"; } # TDOC: error
+error2() { echo -e "\033[31m--\033[0m $* \033[31m--\033[0m"; } # TDOC: error2 
 die()    { error "$*";  exit 1; } # TDOC: die
 die2()   { error2 "$*"; exit 1; }
 ask()    { msg "$*"; read -r ""; } # TDOC: ask for prompt, and return the value
@@ -174,15 +174,19 @@ EOF
 do_work() {
     cd "$DFS_DIR"
 
-    msg "CWD $PWD"
     source "$DFS_DIR/.dfs"
 
     if [ "x$WORK_MODE" = "xstore" ]; then
-        msg2 "Store"
+        msg "Store $PWD/.dfs"
         store
-    else
-        msg2 "Restore"
+	msg "End"
+    elif [ "x$WORK_MODE" = 'xrestore' ]; then
+        msg "Store $PWD/.dfs"
         restore
+	msg "End"
+    else
+	error "Unknown WORK_MODE $WORK_MODE"
+	return 1
     fi
 }
 
@@ -192,7 +196,7 @@ cycle_and_work() {
     # parse full path
     root_dir="$PWD"
 
-    msg "SEARCH $root_dir"
+    msg "BEGIN $root_dir"
     for f in $(find "$root_dir" -name '.dfs' -type f); do
         set +e
         # https://unix.stackexchange.com/questions/138463/do-parentheses-really-put-the-command-in-a-subshell
