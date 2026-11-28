@@ -79,9 +79,9 @@ build-release:
 	kpass gf "$$PASS_KEYSTORE" "$$signing_dir/$$KEYSTORE_FILENAME" >/dev/null; \
 	ANDROID_KEYSTORE_FILE="$$signing_dir/$$KEYSTORE_FILENAME"; \
 	test -f "$$ANDROID_KEYSTORE_FILE"; \
-	ANDROID_STORE_PASSWORD=$$(kpass get "$$PASS_STORE_PASSWORD"); \
-	ANDROID_KEY_PASSWORD=$$(kpass get "$$PASS_KEY_PASSWORD"); \
-	ANDROID_KEY_ALIAS=$$(kpass get "$$PASS_KEY_ALIAS"); \
+	ANDROID_STORE_PASSWORD=$$(kpass show "$$PASS_STORE_PASSWORD"); \
+	ANDROID_KEY_PASSWORD=$$(kpass show "$$PASS_KEY_PASSWORD"); \
+	ANDROID_KEY_ALIAS=$$(kpass show "$$PASS_KEY_ALIAS"); \
 	export ANDROID_KEYSTORE_FILE ANDROID_STORE_PASSWORD ANDROID_KEY_PASSWORD ANDROID_KEY_ALIAS; \
 	./gradlew assembleRelease
 ```
