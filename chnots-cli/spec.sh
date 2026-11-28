@@ -54,7 +54,6 @@ Chnot 是笔记的组成单元，可以嵌套子 Chnot。每个 Chnot 应该有�
 | Tag 类别 | 用途 | 示例 |
 | :--- | :--- | :--- |
 | **类型** | 内容性质 | `project`, `area`, `theme`, `concept`, `how-to`, `tutorial`, `reference`, `moc` |
-| **状态** | 生命周期 | `seed`, `growing`, `evergreen`, `archived` |
 | **领域** | 技术栈/知识域 | `linux`, `btrfs`, `k8s`, `go`, `rust`, `ai`, `pkm`, `finance` |
 | **场景** | 实操语境 | `troubleshooting`, `performance`, `security`, `architecture` |
 
