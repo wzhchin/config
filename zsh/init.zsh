@@ -91,8 +91,6 @@ if [[ -o zle ]]; then
 fi
 
 
-export EDITOR=vim
-
 ## Autocompletion with an arrow-key driven interface
 zstyle ':completion:*' menu select
 

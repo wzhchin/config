@@ -128,6 +128,8 @@ wtt() {
 ########################################
 ## Aliases
 alias ls='ls --color=auto'
+alias ll='ls --color=auto -lh'
+alias lla='ls --color=auto -lha'
 alias grep='grep --color=auto'
 alias rga="rg --no-ignore-files --no-ignore --hidden -i"
 alias fda='NO_COLOR=1 fd -I --hidden'
